@@ -1,0 +1,226 @@
+<!-- ======================================================================= -->
+<!-- Copyright 2024 MedCVR Lab                                               -->
+<!-- ======================================================================= -->
+<!-- This file contains the description of the dVRK PSM robot with LND tool.-->
+
+<mujoco model="psm_lnd">
+
+  <compiler angle="radian" meshdir="assets" autolimits="true"/>
+
+  <default>
+    <default class="psm_lnd">
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+      </default>
+      <default class="collision">
+        <geom type="mesh" group="3"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <material name="off_white" rgba="0.89804 0.91765 0.92941 1"/>
+    <material name="black" rgba="0.3 0.3 0.3 1"/>
+    <material name="silver" rgba="0.79608 0.82353 0.93725 1"/>
+    <!-- The printed bracket is WHITE PLA, not black. -->
+    <material name="mount_white" rgba="0.93 0.93 0.95 1"/>
+
+    <!-- Printed bracket that clamps the shaft and carries the wrist camera.
+         Measured from the STL: 37.5 x 17.5 x 23.5 mm, two through-bores along
+         the part's y axis --
+             shaft clamp  dia 9.00 mm at (28.5, -11.75)   [shaft is 8.80 mm]
+             camera bore  dia 14.5 mm at (11.70, -11.74)
+         so the lens sits 16.8 mm off the shaft axis. -->
+    <mesh name="wrist_camera_mount" file="wrist_camera_mount.stl"
+          scale="0.001 0.001 0.001"/>
+
+    <!-- Collision meshes -->
+    <mesh file="lnd_roll_link_collision_0.obj"/>
+    <mesh file="lnd_roll_link_collision_1.obj"/>
+    <mesh file="lnd_roll_link_collision_2.obj"/>
+    <mesh file="lnd_pitch_link_collision_0.obj"/>
+    <mesh file="lnd_pitch_link_collision_1.obj"/>
+    <mesh file="lnd_pitch_link_collision_2.obj"/>
+    <mesh file="lnd_gripper_link_collision_0.obj"/>
+    <mesh file="lnd_gripper_link_collision_1.obj"/>
+    <mesh file="tool_main_insertion_link_collision_0.obj"/>
+    <mesh file="tool_main_insertion_link_collision_1.obj"/>
+    
+    <!-- Visual meshes -->
+    <mesh file="base_link.obj"/>
+    <mesh file="yaw_link.obj"/>
+    <mesh file="pitch_back_link.obj"/>
+    <mesh file="pitch_bottom_link.obj"/>
+    <mesh file="pitch_end_link.obj"/>
+    <mesh file="pitch_top_link.obj"/>
+    <mesh file="pitch_front_link.obj"/>
+    <mesh file="tool_main_insertion_link.obj"/>
+    <mesh file="lnd_roll_link.obj"/>
+    <mesh file="lnd_pitch_link.obj"/>
+    <mesh file="lnd_yaw_link.obj"/>
+    <mesh file="lnd_gripper_link.obj"/>
+  </asset>
+
+  <worldbody>
+    <body name="front_cam_frame" pos="0.0 -0.02 0.25" quat="0 0 0 1">
+      <camera name="front_cam"/>
+    </body>
+    <body name="base_link" pos="0 -0.0886 0.1524">
+      <geom mesh="base_link" pos="0 -0.4864 0" class="visual" material="off_white"/>
+
+      <body name="yaw_link" quat="0.5 0.5 -0.5 0.5">
+        <inertial pos="-0.038769 0 0.041596" quat="0.999476 -0.0323563 -0.000353998 0.000808658" mass="1.4705" diaginertia="0.0181432 0.015746 0.0082178"/>
+        <joint name="outer_yaw" range="-1.605 1.5994"/>
+        <geom mesh="yaw_link" pos="0 0 0.4864" class="visual" material="off_white"/>
+
+        <body name="pitch_back_link" pos="0 0 0.516" quat="0.699649 -0.699649 -0.102427 -0.102427">
+          <inertial pos="-0.011651 -0.036241 0" quat="0.526057 0.535871 0.461387 0.47247" mass="0.98494" diaginertia="0.00571089 0.00564713 0.00196294"/>
+          <joint name="outer_pitch" range="-0.93556 0.94249"/>
+          <geom mesh="pitch_back_link" class="visual" material="off_white"/>
+
+          <body name="pitch_bottom_link" pos="0.15 0 0" quat="0.597233 0 0 0.802068">
+            <inertial pos="0.25683 -0.010348 0" quat="0.493171 0.49203 0.507846 0.506736" mass="0.44569" diaginertia="0.0112804 0.0111024 0.000450444"/>
+            <joint name="pitch_bottom_joint" range="-0.94249 0.93556"/>
+            <geom mesh="pitch_bottom_link" class="visual" material="off_white"/>
+
+            <body name="pitch_end_link" pos="0.516 0 0">
+              <inertial pos="-0.0019293 -0.13613 0" quat="0.707004 0.707004 -0.0120644 -0.0120619" mass="0.355" diaginertia="0.0238961 0.0238961 0.0238961"/>
+              <joint name="pitch_end_joint" range="-0.93556 0.94249"/>
+              <geom mesh="pitch_end_link" class="visual" material="off_white"/>
+
+              <body name="main_insertion_link" pos="0.043 -0.28809 0" quat="0.5 -0.499999 0.500001 0.499999">
+                <inertial pos="0.0040563 -0.00010934 0.0098616" quat="0.923879 0.382683 -0.00072506 -0.00030033" mass="0.22491" diaginertia="0.004 0.004 0.004"/>
+                <!-- Lower bound 0.05 (not 0): at insertion 0 the tool retracts fully
+                     into the cannula/parent segment (tool_midpoint ~15cm), which is
+                     physically meaningless. 0.05 caps tool height at ~10cm, still well
+                     clear of the ~8cm the lift goal needs. -->
+                <joint name="main_insertion" range="0.05 0.24" type="slide"/>
+                <!-- <geom mesh="tool_main_insertion_link" quat="0.707105 0 0 0.707108" class="visual" material="black"/> -->
+                <!-- <geom name="main_insertion_link_0_collision" mesh="tool_main_insertion_link_collision_0" quat="0.707105 0 0 0.707108" class="collision"/> -->
+                <!-- <geom name="main_insertion_link_1_collision" mesh="tool_main_insertion_link_collision_1" quat="0.707105 0 0 0.707108" class="collision"/> -->
+                <geom name="main_insertion_link" type="capsule" size="0.0042" fromto="0 0 0 0 0 0.406" class="visual" material="black"/>
+                <geom name="main_insertion_link_collision" type="capsule" size="0.0042" fromto="0 0 0 0 0 0.406" class="collision" material="black"/>
+                <body name="tool_roll_link" pos="0 0 0.4162" quat="0.707105 0 0 -0.707108">
+                  <inertial pos="0 0 -0.0058234" quat="0.820473 0.339851 -0.17592 0.424708" mass="0.00033225" diaginertia="0.00102 0.00099 0.00099"/>
+                  <joint name="tool_roll" range="-3.14159 3.14159"/>
+                  <!-- Mount pose SOLVED, not hand-derived: see
+                       scripts/wristmount_fit_b.py, which recomputes it and can
+                       re-verify it (--verify).
+
+                       Orientation B: the bracket rolled 180 deg about the line
+                       joining its two bores, about the CLAMP-BORE CENTRE so the
+                       bore stays coaxial with the shaft (measured 0.00 deg,
+                       0.25 mm off axis). That puts the set-screw end DOWN,
+                       toward the jaw, which is how the real part is fitted.
+
+                       Height: slid along the shaft so the closed-jaw tip to the
+                       TOP of the bracket is exactly 60.0 mm (the bracket is
+                       17.5 mm thick, so its bottom face is at 42.5 mm). Both
+                       ends are read off mesh VERTICES with the jaw driven shut,
+                       not off body origins.
+
+                       These two numbers were stale at 80.0/62.5 -- the pose had
+                       been re-solved at a 60 mm standoff and the prose was not
+                       updated, which is worth more than a tidy-up: reading them
+                       is how you conclude the bracket is 20 mm too high up the
+                       shaft when it is not. `--verify` prints the truth; trust
+                       it over this comment.
+
+                       Independently confirmed against the real instrument:
+                       measured tip -> top of mount ~60 mm, tip -> bottom ~40 mm.
+                       The 2.5 mm on the bottom face is bracket thickness (this
+                       STL is 17.5 mm, the real part measures ~20 mm).
+
+                       DO NOT hand-edit these numbers. MuJoCo re-frames a mesh
+                       at compile time (mesh_pos + mesh_quat: here a translation
+                       of 18.7, 8.3, -11.7 mm plus a rotation sending STL
+                       x->+y, y->+z, z->+x), so a quaternion derived in the
+                       STL's own axes is applied to a DIFFERENT frame. That is
+                       exactly how the previous pose came out rolled 180 deg
+                       while still looking plausible. -->
+                  <geom name="wrist_camera_mount" mesh="wrist_camera_mount"
+                        pos="-0.028500 0.011750 -0.023750" quat="0.707107 -0.707107 0.000000 -0.000000"
+                        class="visual" material="mount_white"/>
+                  <!-- Lens in the camera bore, measured 16.52 mm off the
+                       shaft axis, sitting on the bore face NEAREST the jaw and
+                       aimed at the closed-jaw tip: 64.66 mm away, aim error
+                       0.000 deg. Solved alongside the mount by
+                       scripts/wristmount_fit_b.py -- this camera is a SIBLING
+                       of the mount geom, not a child, so it does not follow the
+                       bracket and must be re-solved whenever the bracket moves.
+
+                       fovy 90 is still a PLACEHOLDER. The real unit is a 1080p
+                       USB module (f = 3.6 mm) with a fisheye added in the lab,
+                       so the true field is neither 90 nor a pinhole. Calibrate
+                       it before trusting any wrist-camera policy. -->
+                  <camera name="wrist_camera" pos="-0.016500 -0.000250 -0.023750"
+                          quat="0.133370 0.713405 -0.676227 -0.126420" fovy="90"/>
+                  <geom mesh="lnd_roll_link" class="visual" material="silver"/>
+                  <!-- <geom name="tool_roll_link_0_collision" mesh="lnd_roll_link_collision_0" class="collision" material="silver"/> -->
+                  <!-- <geom name="tool_roll_link_1_collision" mesh="lnd_roll_link_collision_1" class="collision" material="silver"/> -->
+                  <!-- <geom name="tool_roll_link_2_collision" mesh="lnd_roll_link_collision_2" class="collision" material="silver"/> -->
+                  <geom name="tool_roll_capsule_collision" type="capsule" size="0.0044" fromto="0 0 -0.007 0 0 -0.005" class="collision" material="silver"/>
+
+                  <body name="tool_pitch_link" quat="0.499998 0.5 -0.5 0.500002">
+                    <inertial pos="0.0035763 0 0" quat="0.820473 0.339851 -0.17592 0.424708" mass="0.00025784" diaginertia="0.00102 0.00099 0.00099"/>
+                    <joint name="tool_pitch" range="-1.5708 1.5708"/>
+                    <geom mesh="lnd_pitch_link" class="visual" material="silver"/>
+                    <!-- <geom name="tool_pitch_link_0_collision" mesh="lnd_pitch_link_collision_0" class="collision" material="silver"/> -->
+                    <!-- <geom name="tool_pitch_link_1_collision" mesh="lnd_pitch_link_collision_1" class="collision" material="silver"/> -->
+                    <!-- <geom name="tool_pitch_link_2_collision" mesh="lnd_pitch_link_collision_2" class="collision" material="silver"/> -->
+                    <geom name="tool_pitch_capsule_collision" type="capsule" size="0.0033" fromto="0.0015 0 0 0.008 0 0" class="collision" material="silver"/>
+
+                    <body name="tool_yaw_link" pos="0.0091 0 0" quat="0.499998 -0.5 0.5 0.500002">
+                      <inertial pos="0 0 0" quat="0.820473 0.339851 -0.17592 0.424708" mass="0.012491" diaginertia="0.00102 0.00099 0.00099"/>
+                      <joint name="tool_yaw" range="-1.5708 1.5708"/>
+                      <geom mesh="lnd_yaw_link" class="visual" material="silver"/>
+
+                      <body name="tool_gripper1_link">
+                        <inertial pos="0.00019605 0.001435 -0.00088478" quat="0.820473 0.339851 -0.17592 0.424708" mass="0.010491" diaginertia="0.00102 0.00099 0.00099"/>
+                        <joint name="tool_gripper1_joint" range="-1 0"/>
+                        <geom mesh="lnd_gripper_link" class="visual" material="silver"/>
+						            <geom name="rg1_collision" type="box" size="0.0004 0.0022 0.00075" pos="-0.0004 -0.007 0.0" class="collision" material="silver"/>
+                        <geom name="rg2_collision" type="capsule" size="0.0007" fromto="-0.00075 -0.004 0 -0.0007 -0.009 0" class="collision" material="silver"/>
+                        <geom name="rg3_collision" type="capsule" size="0.0008" fromto="-0.00075 -0.002 -0.001 -0.0007 -0.005 0" class="collision" material="silver"/>
+                      </body>
+                      <body name="tool_gripper2_link">
+                        <inertial pos="-0.00019605 0.001435 0.00088478" quat="0.820473 0.339851 -0.17592 0.424708" mass="0.010491" diaginertia="0.00102 0.00099 0.00099"/>
+                        <joint name="jaw" range="0 1"/>
+                        <geom mesh="lnd_gripper_link" quat="-3.67321e-06 0 1 0" class="visual" material="silver"/>
+                        <geom name="lg1_collision" type="box" size="0.0004 0.0022 0.00075" pos="0.0004 -0.007 0.0" class="collision" material="silver"/>
+                        <geom name="lg2_collision" type="capsule" size="0.0007" fromto="0.00075 -0.004 0 0.0007 -0.009 0" class="collision" material="silver"/>
+                        <geom name="lg3_collision" type="capsule" size="0.0008" fromto="0.00075 -0.002 0.001 0.0007 -0.005 0" class="collision" material="silver"/>
+                        </body>
+                      <site name="tool_midpoint" size="0.001" pos="0 -0.0065 0" quat="0.499998 -0.5 0.5 0.500002" rgba="1 0 0 1" group="1"/>
+                      <site name="tool_tip" size="0.001" pos="0 -0.0102 0" quat="0.499998 -0.5 0.5 0.500002" rgba="1 0 0 1" group="1"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+
+          <body name="pitch_top_link" pos="0.18366 0.014121 0" quat="0.597233 0 0 0.802068">
+            <inertial pos="0.31246 -0.00056566 0" quat="0.500628 0.500628 0.499371 0.499371" mass="0.17841" diaginertia="0.00463463 0.00449516 0.000149862"/>
+            <joint name="pitch_top_joint" range="-0.94249 0.93556"/>
+            <geom mesh="pitch_top_link" class="visual" material="off_white"/>
+          </body>
+        </body>
+        <body name="pitch_front_link" pos="0 0 0.42" quat="0.699649 -0.699649 -0.102427 -0.102427">
+          <inertial pos="0.096269 0 0.047551" quat="0.519382 0.479835 0.479835 0.519382" mass="0.074425" diaginertia="0.00022654 0.000224576 7.40351e-06"/>
+          <joint name="pitch_front_joint" range="-0.93556 0.94249"/>
+          <geom mesh="pitch_front_link" class="visual" material="off_white"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <equality>
+    <joint joint1="jaw" joint2="tool_gripper1_joint" polycoef="0 -1 0 0 0"/>
+    <joint joint1="outer_pitch" joint2="pitch_bottom_joint" polycoef="0 -1 0 0 0"/>
+    <joint joint1="outer_pitch" joint2="pitch_end_joint" polycoef="0 1 0 0 0"/>
+    <joint joint1="outer_pitch" joint2="pitch_top_joint" polycoef="0 -1 0 0 0"/>
+    <joint joint1="outer_pitch" joint2="pitch_front_joint" polycoef="0 1 0 0 0"/>
+  </equality>
+
+</mujoco>

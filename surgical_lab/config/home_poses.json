@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "poses": {
+    "unityhome": {
+      "joint_names": [
+        "outer_yaw",
+        "outer_pitch",
+        "pitch_bottom_joint",
+        "pitch_end_joint",
+        "main_insertion",
+        "tool_roll",
+        "tool_pitch",
+        "tool_yaw",
+        "tool_gripper1_joint",
+        "jaw",
+        "pitch_top_joint",
+        "pitch_front_joint"
+      ],
+      "joint_pos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.311063,
+        0.0,
+        0.0,
+        0.0,
+        -0.05,
+        0.05,
+        0.0,
+        0.0
+      ],
+      "jaw_open": false,
+      "note": "captured from a training reset with A3B_UNITY_LAYOUT=1 A3B_UNITY_HOME=1"
+    },
+    "prevhome": {
+      "joint_names": [
+        "outer_yaw",
+        "outer_pitch",
+        "pitch_bottom_joint",
+        "pitch_end_joint",
+        "main_insertion",
+        "tool_roll",
+        "tool_pitch",
+        "tool_yaw",
+        "tool_gripper1_joint",
+        "jaw",
+        "pitch_top_joint",
+        "pitch_front_joint"
+      ],
+      "joint_pos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.311063,
+        0.0,
+        0.0,
+        0.0,
+        -0.05,
+        0.5,
+        0.0,
+        0.0
+      ],
+      "jaw_open": true,
+      "note": "captured from a training reset with A3B_UNITY_LAYOUT=1 A3B_UNITY_HOME=0"
+    },
+    "unity_dump": {
+      "joint_names": [
+        "outer_yaw",
+        "outer_pitch",
+        "pitch_bottom_joint",
+        "pitch_end_joint",
+        "main_insertion",
+        "tool_roll",
+        "tool_pitch",
+        "tool_yaw",
+        "tool_gripper1_joint",
+        "jaw",
+        "pitch_top_joint",
+        "pitch_front_joint"
+      ],
+      "joint_pos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.311063,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "jaw_open": false,
+      "note": "Unity home replica: vertical shaft, jaw fully closed, tool_tip control point 12.547 mm above the floor (PLAY dump at home: tool_tip y=0.25093u x 50mm/u)"
+    },
+    "liftpeghome": {
+      "joint_names": [
+        "outer_yaw",
+        "outer_pitch",
+        "pitch_bottom_joint",
+        "pitch_end_joint",
+        "main_insertion",
+        "tool_roll",
+        "tool_pitch",
+        "tool_yaw",
+        "tool_gripper1_joint",
+        "jaw",
+        "pitch_top_joint",
+        "pitch_front_joint"
+      ],
+      "joint_pos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.25433,
+        0.0,
+        0.0,
+        0.0,
+        -0.05,
+        0.05,
+        0.0,
+        0.0
+      ],
+      "jaw_open": true,
+      "note": "liftpeg a3b home, measured from a training reset of Surgicallab-Liftpeg-A3B-Shaped-Bounded. Identical to unityhome in every joint EXCEPT main_insertion, which is retracted 0.056733 m (0.311063 -> 0.254330). tool_tip 12.55 -> 69.28 mm above the floor; x/y and orientation unchanged."
+    }
+  }
+}
