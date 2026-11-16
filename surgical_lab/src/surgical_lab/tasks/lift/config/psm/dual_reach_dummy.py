@@ -6,6 +6,7 @@ before anyone spends GPU hours on the real bimanual reward:
   1. Does PPO learn at all in the dual scene (reward goes up, distance goes down)?
   2. Do both arms' action slices reach the policy correctly (both distances fall)?
   3. Does training log to wandb, save checkpoints and resume?
+  4. Does the arm-arm contact penalty fire (and stay at ~0 once learned)?
 
 Each reset samples one target per arm in a box around that arm's nominal tool
 home (arm 1 above the peg, arm 2 40 mm to +x; both at ~69 mm). The boxes are
@@ -135,4 +136,7 @@ def dual_reach_dummy_env_cfg(play: bool = False):
     "dist_2_mm": MetricsTermCfg(func=m_dist_mm, params={"arm": 1}, reduce="last"),
     "reached_rate": MetricsTermCfg(func=m_reached, reduce="last"),
   }
+  # Any arm-arm contact: -DUAL_ARM_CONTACT_PENALTY (default 10, close to the
+  # best possible episode return of ~12) and the episode ends.
+  D.add_arm_contact_safety(cfg)
   return cfg

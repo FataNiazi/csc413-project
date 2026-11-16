@@ -84,6 +84,12 @@ uv run train Surgicallab-Dual-Reach-Dummy --env.scene.num-envs 1024 \
   --agent.run-name ppo-dummyreach-s42
 ```
 
+Any contact between the two arms costs `DUAL_ARM_CONTACT_PENALTY` (default 10,
+about one whole episode's best return) and ends the episode
+(`DUAL_ARM_CONTACT_TERMINATE=1`); `Episode_Metrics/arm_contact_rate` is the
+fraction of episodes that had one. Only the instrument (shaft, wrist, jaws) has
+collision geometry, so contacts between the upper links are not seen yet.
+
 It logs to the wandb project `csc413-dual-psm`. Checkpoints land in
 `logs/rsl_rl/dual_reach_dummy/<timestamp>_<run-name>/`: the newest
 `model_<iter>.pt` (every 100 iterations) plus `best.pt`. To continue after a

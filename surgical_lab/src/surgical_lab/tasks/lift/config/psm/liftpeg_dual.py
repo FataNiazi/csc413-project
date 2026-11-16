@@ -96,6 +96,73 @@ def tool_pos(env, asset_name: str = "robot2") -> torch.Tensor:
   return r.data.site_pos_w[:, r.site_names.index("tool_midpoint")] - env.scene.env_origins
 
 
+# --- arm-arm contact: sensor, penalty, termination, metric -------------------
+#
+# Any contact between the two arms is treated as a failure: on the real cart it
+# is two instruments clashing inside the patient. One MuJoCo contact sensor
+# watches the whole subtree of arm 1 against the whole subtree of arm 2, so it
+# fires on ANY arm-arm contact the physics can produce. The parts that can touch
+# are the ones with collision geoms: the instrument shaft (main_insertion_link),
+# wrist roll and pitch, and the jaws (shaft-shaft, shaft-jaw and shaft-wrist
+# contacts all verified to fire).
+#
+# KNOWN GAP: the parallelogram links, the instrument carriage (pitch_end_link)
+# and the base have NO collision geometry. With the default mount (both shafts
+# vertical, 40 mm apart) the two carriages sit ~3 mm apart at the home pose and
+# their meshes overlap under motion, unseen by this sensor. Fixing that needs
+# collision geoms on those links AND a mount that keeps them apart.
+ARM_CONTACT_SENSOR = "arm_arm_contact"
+# Cost of one contact step, in return units (the reward manager scales weights
+# by the step dt, so the weight below is -penalty / dt). Sized per task: it
+# should outweigh what the policy could earn in the rest of the episode.
+ARM_CONTACT_PENALTY = float(os.environ.get("DUAL_ARM_CONTACT_PENALTY", "10"))
+ARM_CONTACT_TERMINATE = os.environ.get("DUAL_ARM_CONTACT_TERMINATE", "1") == "1"
+
+
+def arm_arm_contact(env) -> torch.Tensor:
+  """(num_envs,) bool: any part of arm 1 touching any part of arm 2."""
+  found = env.scene[ARM_CONTACT_SENSOR].data.found
+  return (found.reshape(found.shape[0], -1) > 0).any(dim=-1)
+
+
+def arm_arm_contact_f(env) -> torch.Tensor:
+  return arm_arm_contact(env).float()
+
+
+def add_arm_contact_safety(cfg, penalty: float = ARM_CONTACT_PENALTY,
+                           terminate: bool = ARM_CONTACT_TERMINATE):
+  """Penalise (and by default end the episode on) any arm-arm contact.
+
+  Call AFTER the task sets cfg.rewards / terminations / metrics, since those
+  are often replaced wholesale."""
+  from mjlab.managers.metrics_manager import MetricsTermCfg
+  from mjlab.managers.reward_manager import RewardTermCfg
+  from mjlab.managers.termination_manager import TerminationTermCfg
+  from mjlab.sensor import ContactMatch, ContactSensorCfg
+
+  if not ARM_CONTACT:
+    raise ValueError("arm-arm contact safety needs DUAL_PSM_ARM_CONTACT=1: "
+                     "with it off the arms pass through each other and no "
+                     "contact is ever generated to detect.")
+  cfg.scene.sensors = tuple(cfg.scene.sensors or ()) + (
+    ContactSensorCfg(
+      name=ARM_CONTACT_SENSOR,
+      primary=ContactMatch(mode="subtree", pattern="mocap_base", entity="robot"),
+      secondary=ContactMatch(mode="subtree", pattern="mocap_base", entity="robot2"),
+      fields=("found",),
+    ),
+  )
+  dt = cfg.sim.mujoco.timestep * cfg.decimation
+  cfg.rewards["arm_contact"] = RewardTermCfg(func=arm_arm_contact_f,
+                                             weight=-penalty / dt)
+  if terminate:
+    cfg.terminations["arm_contact"] = TerminationTermCfg(func=arm_arm_contact)
+  # max: 1 if the episode had ANY arm-arm contact. Should go to ~0 in training.
+  cfg.metrics["arm_contact_rate"] = MetricsTermCfg(func=arm_arm_contact_f,
+                                                   reduce="max")
+  return cfg
+
+
 def psm_lift_peg_dual_env_cfg(
   play: bool = False, reward: str = "e_shaped", state_only: bool = True
 ):
