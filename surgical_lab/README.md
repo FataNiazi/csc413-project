@@ -87,7 +87,7 @@ iterations. See `src/surgical_lab/tasks/lift/config/psm/dual_reach_dummy.py`.
 
 ```bash
 # once per machine: wandb login   (or export WANDB_API_KEY=...; never commit it)
-export WANDB_ENTITY=csc413-dvrk    # log to the team, not your personal account
+export WANDB_ENTITY=hardik-narkhede-university-of-toronto    # log to the team, not your personal account
 tmux new -s train
 uv run train Surgicallab-Dual-Reach-Dummy --env.scene.num-envs 1024 \
   --agent.run-name ppo-dummyreach-s42
