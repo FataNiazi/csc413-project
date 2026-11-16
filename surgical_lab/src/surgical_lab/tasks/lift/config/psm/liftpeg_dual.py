@@ -330,4 +330,51 @@ def psm_lift_peg_dual_env_cfg(
   tp = copy.deepcopy(terms["joint_pos"])
   tp.func, tp.params = tool_pos, {"asset_name": "robot2"}
   terms["tool_pos_2"] = tp
+  _add_video_view(cfg)
   return cfg
+
+
+# --- training videos -----------------------------------------------------------
+#
+# `train --video True` (and `play --video True`) film env 0 through mjlab's
+# offscreen renderer, using cfg.viewer. That camera can only be free or track a
+# body, and env 0 is NOT at the world origin once there is more than one env
+# (origins are on a 1 m grid), so a fixed world lookat would point at nothing.
+# Instead it tracks VIEW_ANCHOR: an empty mocap body placed at the centre of the
+# shared workspace in every env at reset. The view matches the demo videos:
+# from the front, slightly to PSM2's side, looking down at the tools.
+VIEW_LOOKAT = (-0.020, 0.012, 0.055)      # env frame: between the tools, above the peg
+
+
+def _anchor_spec():
+  import mujoco
+
+  spec = mujoco.MjSpec()
+  spec.worldbody.add_body(name="view_anchor", mocap=True)
+  return spec
+
+
+def place_view_anchor(env, env_ids: torch.Tensor | None = None) -> None:
+  if env_ids is None:
+    env_ids = torch.arange(env.num_envs, device=env.device)
+  pose = torch.zeros(len(env_ids), 7, device=env.device)
+  pose[:, :3] = env.scene.env_origins[env_ids] + torch.tensor(VIEW_LOOKAT, device=env.device)
+  pose[:, 3] = 1.0
+  env.scene["view_anchor"].write_mocap_pose_to_sim(pose, env_ids=env_ids)
+
+
+def _add_video_view(cfg):
+  from mjlab.entity import EntityCfg
+  from mjlab.managers.event_manager import EventTermCfg
+  from mjlab.viewer.viewer_config import ViewerConfig
+
+  ents = dict(cfg.scene.entities)
+  ents["view_anchor"] = EntityCfg(spec_fn=_anchor_spec)
+  cfg.scene.entities = ents
+  cfg.events["place_view_anchor"] = EventTermCfg(mode="reset", func=place_view_anchor)
+  cfg.viewer = ViewerConfig(
+    origin_type=ViewerConfig.OriginType.ASSET_ROOT, entity_name="view_anchor",
+    distance=0.24, azimuth=250.0, elevation=-22.0,
+    height=int(os.environ.get("DUAL_VIDEO_H", "480")),
+    width=int(os.environ.get("DUAL_VIDEO_W", "640")),
+  )

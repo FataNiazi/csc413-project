@@ -64,6 +64,33 @@ def resample_targets(env, env_ids: torch.Tensor | None = None) -> None:
   half = torch.tensor((RANGE_XY, RANGE_XY, RANGE_Z), device=env.device)
   u = torch.rand(n, 2, 3, device=env.device) * 2.0 - 1.0
   t[env_ids] = c.unsqueeze(0) + u * half
+  # Move the visual markers (videos / viewer only; they have no physics).
+  pose = torch.zeros(n, 7, device=env.device)
+  pose[:, 3] = 1.0
+  for i, name in enumerate(MARKERS):
+    pose[:, :3] = env.scene.env_origins[env_ids] + t[env_ids, i]
+    env.scene[name].write_mocap_pose_to_sim(pose, env_ids=env_ids)
+
+
+# Target markers: a sphere per arm (arm 1 cyan, arm 2 magenta, as in
+# demo_dummy_reach.py), on mocap bodies with contype/conaffinity 0 so they
+# never touch anything. Radius = the 3 mm "reached" tolerance.
+MARKERS = ("target_1", "target_2")
+_MARKER_RGBA = ((0.1, 0.8, 1.0, 0.6), (1.0, 0.3, 0.9, 0.6))
+
+
+def _marker_spec(name: str, rgba):
+  import mujoco
+
+  def fn():
+    spec = mujoco.MjSpec()
+    b = spec.worldbody.add_body(name=name, mocap=True)
+    g = b.add_geom(name=f"{name}_sphere", type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                   size=(REACH_TOL, 0, 0), contype=0, conaffinity=0, group=2)
+    g.rgba = rgba
+    return spec
+
+  return fn
 
 
 def _tools(env) -> torch.Tensor:
@@ -105,6 +132,13 @@ def m_reached(env) -> torch.Tensor:
 def dual_reach_dummy_env_cfg(play: bool = False):
   cfg = D.psm_lift_peg_dual_env_cfg(play=play, reward="e_shaped", state_only=True)
   cfg.episode_length_s = EPISODE_S
+
+  from mjlab.entity import EntityCfg
+
+  ents = dict(cfg.scene.entities)
+  for name, rgba in zip(MARKERS, _MARKER_RGBA, strict=True):
+    ents[name] = EntityCfg(spec_fn=_marker_spec(name, rgba))
+  cfg.scene.entities = ents
 
   cfg.events["dummy_targets"] = EventTermCfg(mode="reset", func=resample_targets)
 

@@ -112,11 +112,20 @@ the smoke run in wandb afterwards if you like.
 tmux new -s train
 cd ~/csc413-project/surgical_lab
 set -a; . scripts/a3_liftpeg_env.sh; set +a
-uv run train Surgicallab-Dual-Reach-Dummy \
+MUJOCO_GL=egl uv run train Surgicallab-Dual-Reach-Dummy \
   --env.scene.num-envs 1024 \
   --agent.seed 42 \
-  --agent.run-name ppo-dummyreach-s42-<your-initials>
+  --agent.run-name ppo-dummyreach-s42-<your-initials> \
+  --video True --video-length 200 --video-interval 2400
 ```
+
+`--video True` records a 4 s clip (one episode) of env 0 every 2400 env
+steps (~100 iterations) and uploads it to wandb, in the run's **video** panel.
+It shows both arms from the front, with each arm's target as a sphere (cyan =
+arm 1, magenta = arm 2, sized to the 3 mm "reached" tolerance), so you can see
+whether the policy is actually reaching and keeping the arms apart. Rendering
+only happens while a clip is recording, so it barely slows training.
+`MUJOCO_GL=egl` is required for rendering over SSH (no display).
 
 - Detach with `Ctrl-b` then `d`; reattach later with `tmux attach -t train`.
 - Default length is 500 iterations. Speed on the 4080 is not measured yet;

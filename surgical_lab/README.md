@@ -89,8 +89,8 @@ iterations. See `src/surgical_lab/tasks/lift/config/psm/dual_reach_dummy.py`.
 # once per machine: wandb login   (or export WANDB_API_KEY=...; never commit it)
 export WANDB_ENTITY=hardik-narkhede-university-of-toronto    # log to the team, not your personal account
 tmux new -s train
-uv run train Surgicallab-Dual-Reach-Dummy --env.scene.num-envs 1024 \
-  --agent.run-name ppo-dummyreach-s42
+MUJOCO_GL=egl uv run train Surgicallab-Dual-Reach-Dummy --env.scene.num-envs 1024 \
+  --agent.run-name ppo-dummyreach-s42 --video True --video-length 200 --video-interval 2400
 ```
 
 Any contact between the two arms costs `DUAL_ARM_CONTACT_PENALTY` (default 10,
@@ -99,7 +99,9 @@ about one whole episode's best return) and ends the episode
 fraction of episodes that had one. It covers the whole arm: instrument,
 parallelogram, carriage and base.
 
-It logs to the wandb project `csc413-dual-psm`. Checkpoints land in
+It logs to the wandb project `csc413-dual-psm`. `--video True` uploads a clip of
+env 0 to wandb every ~100 iterations, filmed from the front with the two targets
+drawn as spheres (dual tasks set this view in `liftpeg_dual._add_video_view`). Checkpoints land in
 `logs/rsl_rl/dual_reach_dummy/<timestamp>_<run-name>/`: the newest
 `model_<iter>.pt` (every 100 iterations) plus `best.pt`. To continue after a
 crash or reboot, add `--agent.resume True` (it loads the newest run's newest
