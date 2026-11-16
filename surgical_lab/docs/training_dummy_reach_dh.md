@@ -82,11 +82,11 @@ You want `True NVIDIA GeForce RTX ...` and warp listing a `cuda:0` device.
 
 ```bash
 uv run wandb login                    # paste your key from https://wandb.ai/authorize
-export WANDB_ENTITY=<team-name>       # our team, so runs land there, not in your personal account
+export WANDB_ENTITY=csc413-dvrk        # our team, so runs land there, not in your personal account
 ```
 
 Put the `export WANDB_ENTITY=...` line in your `~/.bashrc` so you don't forget
-it. Runs go to the project **`csc413-dual-psm`** inside the team.
+it. Runs go to the project **`csc413-dual-psm`** inside the team (https://wandb.ai/csc413-dvrk/csc413-dual-psm once the first run exists).
 
 No internet on the machine? Use `export WANDB_MODE=offline`, then later
 `uv run wandb sync logs/rsl_rl/dual_reach_dummy/<run dir>/wandb/offline-run-*`
