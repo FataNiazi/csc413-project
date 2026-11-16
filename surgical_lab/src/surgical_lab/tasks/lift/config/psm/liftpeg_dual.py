@@ -74,6 +74,7 @@ PSM2_TOOL_XY = _floats(
   "DUAL_PSM2_TOOL_XY",
   f"{a3b.ANCHOR_X + (-0.040 if _SIDE else 0.040)},{a3b.ANCHOR_Y}")
 PSM2_YAW_DEG = float(os.environ.get("DUAL_PSM2_YAW_DEG", "180"))
+PSM2_WRIST_LEVEL = os.environ.get("DUAL_PSM2_WRIST_LEVEL", "1") == "1"
 # Remote centre of motion (the outer_yaw joint anchor) above the home tool
 # midpoint, measured on the stock PSM: anchor z 327.3 mm, tool ~69 mm. The RCM
 # is directly above the tool at home (outer_yaw = outer_pitch = 0).
@@ -261,6 +262,12 @@ def psm_lift_peg_dual_env_cfg(
     jp["outer_yaw"] = tilt
     # A tilted shaft needs more insertion to keep the tool at the same height.
     jp["main_insertion"] += RCM_ABOVE_TOOL * (1.0 / math.cos(tilt) - 1.0)
+    # Level the jaws: tool_yaw turns them about the same (y) axis as outer_yaw,
+    # so -tilt points them straight down again, like arm 1's. The Cartesian
+    # action holds the orientation it starts the episode with (6-joint IK,
+    # position-only actions), so they then stay vertical as the arm moves.
+    if PSM2_WRIST_LEVEL:
+      jp["tool_yaw"] = jp.get("tool_yaw", 0.0) - tilt
     r2.init_state.joint_pos = jp
   elif LAYOUT == "facing":
     # base2 = T2 + R(yaw) (base1 - T1): the same arm, swung about its tool point.
