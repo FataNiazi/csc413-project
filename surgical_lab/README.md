@@ -75,6 +75,9 @@ browser viewer at http://localhost:8080 without a trained policy.)
 
 ### Pipeline check: `Surgicallab-Dual-Reach-Dummy`
 
+Step-by-step for the team (DH lab machines, wandb, tmux, resuming, viewing the
+policy): [`docs/training_dummy_reach_dh.md`](docs/training_dummy_reach_dh.md).
+
 A throwaway objective for checking the training setup before the real
 bimanual reward exists: each arm reaches its own random target (a 30 x 30 x
 20 mm box around its home tool position, resampled every 4 s episode). Expect
