@@ -235,3 +235,20 @@ register_mjlab_task(
   rl_cfg=_dual_state_rl,
   runner_cls=SurgicalLabOnPolicyRunner,
 )
+
+# Dummy objective on the two-PSM scene: each arm reaches its own random target.
+# A pipeline check (PPO learns, both action slices work, wandb + checkpoints),
+# not a research task. See dual_reach_dummy.py.
+from .dual_reach_dummy import dual_reach_dummy_env_cfg  # noqa: E402
+
+_dual_reach_rl = psm_lift_peg_a3b_state_ppo_runner_cfg(low_entropy=True)
+_dual_reach_rl.experiment_name = "dual_reach_dummy"
+_dual_reach_rl.max_iterations = 500
+_dual_reach_rl.wandb_project = "csc413-dual-psm"
+register_mjlab_task(
+  task_id="Surgicallab-Dual-Reach-Dummy",
+  env_cfg=dual_reach_dummy_env_cfg(),
+  play_env_cfg=dual_reach_dummy_env_cfg(play=True),
+  rl_cfg=_dual_reach_rl,
+  runner_cls=SurgicalLabOnPolicyRunner,
+)

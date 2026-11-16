@@ -67,6 +67,30 @@ uv run train Surgicallab-Liftpeg-Dual-State-PoC --env.scene.num-envs 1024
 (`--agent zero`/`random` with `uv run play <task> --viewer viser` opens a 3D
 browser viewer at http://localhost:8080 without a trained policy.)
 
+### Pipeline check: `Surgicallab-Dual-Reach-Dummy`
+
+A throwaway objective for checking the training setup before the real
+bimanual reward exists: each arm reaches its own random target (a 30 x 30 x
+20 mm box around its home tool position, resampled every 4 s episode). Expect
+`Episode_Metrics/dist_1_mm` and `dist_2_mm` to fall from ~15 mm to a few mm,
+and `reached_rate` (both arms within 3 mm) to climb, within a few hundred
+iterations. See `src/surgical_lab/tasks/lift/config/psm/dual_reach_dummy.py`.
+
+```bash
+# once per machine: wandb login   (or export WANDB_API_KEY=...; never commit it)
+export WANDB_ENTITY=<team-name>   # log to the team, not your personal account
+tmux new -s train
+uv run train Surgicallab-Dual-Reach-Dummy --env.scene.num-envs 1024 \
+  --agent.run-name ppo-dummyreach-s42
+```
+
+It logs to the wandb project `csc413-dual-psm`. Checkpoints land in
+`logs/rsl_rl/dual_reach_dummy/<timestamp>_<run-name>/`: the newest
+`model_<iter>.pt` (every 100 iterations) plus `best.pt`. To continue after a
+crash or reboot, add `--agent.resume True` (it loads the newest run's newest
+checkpoint). On CPU it runs (`--gpu-ids None`), but at ~55 s per iteration
+with 16 envs, so use it only as a smoke test.
+
 ## Things to know
 
 - The Cartesian target is an integrator with no anti-windup
