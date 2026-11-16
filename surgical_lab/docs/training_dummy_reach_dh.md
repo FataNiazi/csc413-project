@@ -26,6 +26,10 @@ shared folder, or render it yourself with `scripts/demo_dummy_reach.py`.
 > CPU-only laptop (4 training iterations, local logging). The GPU run and
 > wandb upload are what this first run is checking.
 
+**First time on a DH machine?** Do the [environment setup
+guide](env_setup/README.md) first (SSH, uv, wandb, tmux explained step by
+step). This page is the short version plus what's specific to this task.
+
 ---
 
 ## 0. Ground rules

@@ -8,6 +8,11 @@ This is a trimmed snapshot of the MedCVR lab's internal `surgical_lab` code: the
 package, the vendored `mujoco_warp`, and the scripts for the dual-arm task. It
 builds on the lab's single-arm peg-lift task and its reward functions.
 
+**New to remote GPUs, uv, wandb or tmux?** Start with
+[`docs/env_setup/`](docs/env_setup/README.md): a step-by-step guide from SSH-ing
+into a DH lab machine to watching your first training run in wandb, plus fixes
+for every problem we've hit.
+
 ## Setup
 
 Linux. An NVIDIA GPU (driver >= 570 / CUDA 12.8) for training; CPU works for
