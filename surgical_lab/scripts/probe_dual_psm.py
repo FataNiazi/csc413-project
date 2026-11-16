@@ -18,6 +18,10 @@ Run from the repo root (CPU is fine; DEV=cuda:0 on a GPU box):
 """
 
 import os
+
+# Written against the original facing-arms layout (arm 2 rotated 180 deg, tools
+# 40 mm apart); the task default is now the lab's side-by-side cart.
+os.environ.setdefault("DUAL_PSM_LAYOUT", "facing")
 import time
 
 import mujoco

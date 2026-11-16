@@ -35,8 +35,12 @@ set -a; . scripts/a3_liftpeg_env.sh; set +a
 (`src/surgical_lab/tasks/lift/config/psm/liftpeg_dual.py`):
 
 - The single-arm `Surgicallab-Liftpeg-State-Shaped` task with a second PSM,
-  `robot2`, mounted facing the first (rotated 180 deg). Placement:
-  `DUAL_PSM2_TOOL_XY`, `DUAL_PSM2_YAW_DEG`.
+  `robot2`, mounted like the lab cart: both PSMs face the same way, side by
+  side, PSM2 250 mm to PSM1's right (seen from the front) with its shaft tilted
+  ~39 deg so the tools meet over the peg. Placement: `DUAL_PSM_LAYOUT`
+  (`side`, default, or the old `facing`), `DUAL_PSM2_BASE_DX`,
+  `DUAL_PSM2_TOOL_XY`. In `side`, every arm link has collision geometry
+  against the other arm (boxes fitted to the upper links).
 - Actions, 8-D: `[dx, dy, dz, jaw]` for arm 1, then the same for arm 2.
   Position steps of 0.5 mm per 50 Hz step, in each arm's own base frame; the
   jaw is binary (>= 0 opens). Tool orientation is fixed for now.
@@ -50,7 +54,7 @@ set -a; . scripts/a3_liftpeg_env.sh; set +a
 | Script | What it does |
 |---|---|
 | `scripts/probe_dual_psm.py` | Smoke test: builds 1 env and checks the arms move independently, both reach the peg and goal, arm-arm contact, and a random-action soak. `SNAP=1 MUJOCO_GL=egl` also saves PNGs. |
-| `scripts/demo_dual_handoff.py` | Scripted demos recorded to mp4 (`MUJOCO_GL=egl`). `DEMO=relay` (default): arm 1 places the ring on the goal, arm 2 carries it on. `DEMO=midair`: arm 1 lifts it, arm 2 takes it in mid-air and places it. Flags every unexpected collision. |
+| `scripts/demo_dual_handoff.py` | (Old `facing` layout, set automatically.) Scripted demos recorded to mp4 (`MUJOCO_GL=egl`). `DEMO=relay` (default): arm 1 places the ring on the goal, arm 2 carries it on. `DEMO=midair`: arm 1 lifts it, arm 2 takes it in mid-air and places it. Flags every unexpected collision. |
 
 ```bash
 uv run python scripts/probe_dual_psm.py
@@ -87,8 +91,8 @@ uv run train Surgicallab-Dual-Reach-Dummy --env.scene.num-envs 1024 \
 Any contact between the two arms costs `DUAL_ARM_CONTACT_PENALTY` (default 10,
 about one whole episode's best return) and ends the episode
 (`DUAL_ARM_CONTACT_TERMINATE=1`); `Episode_Metrics/arm_contact_rate` is the
-fraction of episodes that had one. Only the instrument (shaft, wrist, jaws) has
-collision geometry, so contacts between the upper links are not seen yet.
+fraction of episodes that had one. It covers the whole arm: instrument,
+parallelogram, carriage and base.
 
 It logs to the wandb project `csc413-dual-psm`. Checkpoints land in
 `logs/rsl_rl/dual_reach_dummy/<timestamp>_<run-name>/`: the newest

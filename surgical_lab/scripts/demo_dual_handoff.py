@@ -41,6 +41,10 @@ Run from the repo root (CPU is fine, ~5 min; MUJOCO_GL=egl for the renderer):
 import copy
 import math
 import os
+
+# Written against the original facing-arms layout (arm 2 rotated 180 deg, tools
+# 40 mm apart); the task default is now the lab's side-by-side cart.
+os.environ.setdefault("DUAL_PSM_LAYOUT", "facing")
 import time
 from types import SimpleNamespace
 

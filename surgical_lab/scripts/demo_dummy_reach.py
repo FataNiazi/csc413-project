@@ -122,8 +122,8 @@ writer = iio.get_writer(OUT, fps=round(1.0 / (env.step_dt * FRAME_EVERY)),
                         codec="libx264", quality=8, macro_block_size=8)
 renderer = mujoco.Renderer(m, H, W)
 cam = mujoco.MjvCamera()
-cam.lookat[:] = ORIG + np.array([0.020, 0.012, 0.050])
-cam.distance, cam.azimuth, cam.elevation = 0.24, 115.0, -22.0
+cam.lookat[:] = ORIG + np.array([-0.020, 0.012, 0.060])
+cam.distance, cam.azimuth, cam.elevation = 0.30, 250.0, -22.0
 FONT = ImageFont.load_default(size=22)
 SMALL = ImageFont.load_default(size=18)
 
