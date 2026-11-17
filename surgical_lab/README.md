@@ -44,7 +44,8 @@ set -a; . scripts/a3_liftpeg_env.sh; set +a
   side, PSM2 250 mm to PSM1's right (seen from the front) with its shaft tilted
   ~39 deg so the tools meet over the peg. Placement: `DUAL_PSM_LAYOUT`
   (`side`, default, or the old `facing`), `DUAL_PSM2_BASE_DX`,
-  `DUAL_PSM2_TOOL_XY`. Arm 2's wrist is levelled so its jaws point straight
+  `DUAL_PSM2_TOOL_XY`. Colour/lighting randomisation is off in the dual tasks
+  (state-based; it only made videos flicker), `DUAL_VISUAL_DR=1` restores it. Arm 2's wrist is levelled so its jaws point straight
   down like arm 1's (`DUAL_PSM2_WRIST_LEVEL=1`). In `side`, every arm link has collision geometry
   against the other arm (boxes fitted to the upper links).
 - Actions, 8-D: `[dx, dy, dz, jaw]` for arm 1, then the same for arm 2.
@@ -95,7 +96,7 @@ iterations. See `src/surgical_lab/tasks/lift/config/psm/dual_reach_dummy.py`.
 export WANDB_ENTITY=hardik-narkhede-university-of-toronto    # log to the team, not your personal account
 tmux new -s train
 MUJOCO_GL=egl uv run train Surgicallab-Dual-Reach-Dummy --env.scene.num-envs 1024 \
-  --agent.run-name ppo-dummyreach-s42 --video True --video-length 200 --video-interval 2400
+  --agent.run-name ppo-dummyreach-s42 --video True --video-length 400 --video-interval 2400
 ```
 
 Any contact between the two arms costs `DUAL_ARM_CONTACT_PENALTY` (default 10,

@@ -45,7 +45,7 @@ set -a; . scripts/a3_liftpeg_env.sh; set +a
 MUJOCO_GL=egl uv run train Surgicallab-Dual-Reach-Dummy \
   --env.scene.num-envs 1024 --agent.seed 42 \
   --agent.run-name ppo-dummyreach-s42-<initials> \
-  --video True --video-length 200 --video-interval 2400
+  --video True --video-length 400 --video-interval 2400
 # then Ctrl-b, let go, d
 ```
 
@@ -62,7 +62,7 @@ Piece by piece:
   memory".
 - `--agent.seed`: different seeds give independent runs of the same setup.
 - `--agent.run-name`: the name in wandb (see the naming rule on page 3).
-- `--video True ...`: films env 0 for 200 steps every 2400 steps and uploads
+- `--video True ...`: films env 0 for 400 steps (two 4 s episodes, so at least one whole one; clips start mid-episode) every 2400 steps and uploads
   the clip to wandb.
 - Other useful flags: `--agent.max-iterations N` (length; default 500 for the
   dummy task), `--agent.resume True` (continue the newest run).

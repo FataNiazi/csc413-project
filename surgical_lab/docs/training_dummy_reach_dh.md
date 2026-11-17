@@ -120,10 +120,10 @@ MUJOCO_GL=egl uv run train Surgicallab-Dual-Reach-Dummy \
   --env.scene.num-envs 1024 \
   --agent.seed 42 \
   --agent.run-name ppo-dummyreach-s42-<your-initials> \
-  --video True --video-length 200 --video-interval 2400
+  --video True --video-length 400 --video-interval 2400
 ```
 
-`--video True` records a 4 s clip (one episode) of env 0 every 2400 env
+`--video True` records an 8 s clip (two episodes, so always one whole one) of env 0 every 2400 env
 steps (~100 iterations) and uploads it to wandb, in the run's **video** panel.
 It shows both arms from the front, with each arm's target as a sphere (cyan =
 arm 1, magenta = arm 2, sized to the 3 mm "reached" tolerance), so you can see

@@ -75,6 +75,10 @@ PSM2_TOOL_XY = _floats(
   f"{a3b.ANCHOR_X + (-0.040 if _SIDE else 0.040)},{a3b.ANCHOR_Y}")
 PSM2_YAW_DEG = float(os.environ.get("DUAL_PSM2_YAW_DEG", "180"))
 PSM2_WRIST_LEVEL = os.environ.get("DUAL_PSM2_WRIST_LEVEL", "1") == "1"
+VISUAL_DR = os.environ.get("DUAL_VISUAL_DR", "0") == "1"
+_VISUAL_DR_EVENTS = ("floor_color", "light_intensity", "light_pos", "tool_shaft_color",
+                     "tool_roll_color", "tool_gripper_color", "a3_material_colors",
+                     "a3_object_colors", "a3_stand_color", "a3_light")
 # Remote centre of motion (the outer_yaw joint anchor) above the home tool
 # midpoint, measured on the stock PSM: anchor z 327.3 mm, tool ~69 mm. The RCM
 # is directly above the tool at home (outer_yaw = outer_pitch = 0).
@@ -320,6 +324,14 @@ def psm_lift_peg_dual_env_cfg(
     else:
       e.params["asset_cfg"] = SceneEntityCfg("robot2")
     events[f"{k}_2"] = e
+  # Appearance-only randomisation (colours, lights) exists for the camera
+  # policies of the single-arm task. These tasks are state-based, so it changes
+  # nothing the policy sees -- it only makes the training videos flicker to a
+  # new floor colour / lighting at every reset. Off unless DUAL_VISUAL_DR=1.
+  # Physics DR (friction, mass, gains, encoder bias, ...) is kept.
+  if not VISUAL_DR:
+    for k in _VISUAL_DR_EVENTS:
+      events.pop(k, None)
   cfg.events = events
 
   # Critic (and, for the state task, actor) also sees arm 2.
