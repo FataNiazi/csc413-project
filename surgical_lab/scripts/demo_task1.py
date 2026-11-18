@@ -53,9 +53,14 @@ W, H = 960, 720
 
 torch.manual_seed(SEED)
 np.random.seed(SEED)
-cfg = load_env_cfg("Surgicallab-Liftpeg-Dual-State-PoC")
+# DEMO_TASK=Surgicallab-Dual-Task1-Naive runs the script inside the Task 1 env
+# and reports what its reward saw (phase switch, success, return): a check that
+# the reward fires on a known-good episode.
+TASK = os.environ.get("DEMO_TASK", "Surgicallab-Liftpeg-Dual-State-PoC")
+cfg = load_env_cfg(TASK)
 cfg.scene.num_envs = 1
-D.add_arm_contact_safety(cfg)   # the whole-arm contact sensor (penalty unused here)
+if "arm_contact_rate" not in cfg.metrics:
+  D.add_arm_contact_safety(cfg)   # the whole-arm contact sensor (penalty unused here)
 cfg.terminations = {}
 env = ManagerBasedRlEnv(cfg=cfg, device=DEV)
 env.reset()
@@ -240,6 +245,12 @@ os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
 writer = iio.get_writer(OUT, fps=round(1.0 / (env.step_dt * FRAME_EVERY)),
                         codec="libx264", quality=8, macro_block_size=8)
 n_frames, caption, n_step, n_arm_contact = 0, "", 0, 0
+ret = 0.0
+t1_success_seen = [False]
+if TASK == "Surgicallab-Dual-Task1-Naive":
+  from surgical_lab.tasks.lift.config.psm import dual_task1 as T1
+else:
+  T1 = None
 renderer = mujoco.Renderer(m, H, W)
 cam = mujoco.MjvCamera()
 cam.lookat[:] = ORIG.cpu().numpy() + np.array([-0.025, 0.012, 0.055])
@@ -297,8 +308,17 @@ def step(active=None, err=None):
     if n > LEAD_MAX:
       new *= LEAD_MAX / n
     a[SL[active][0]] = (new - ld) / T.POS_SCALE
-  env.step(torch.as_tensor(a, dtype=torch.float32, device=env.device)[None])
+  _, rew, *_ = env.step(torch.as_tensor(a, dtype=torch.float32, device=env.device)[None])
+  global ret
+  ret += float(rew[0])
   n_step += 1
+  if T1 is not None:
+    t = T1.terms(env)
+    if bool(t["handed"][0]):
+      print(f"        [reward] phase 0 -> 1 (handoff bonus) at step {n_step}", flush=True)
+    if bool(t["success"][0]) and not t1_success_seen[0]:
+      t1_success_seen[0] = True
+      print(f"        [reward] SUCCESS fired at step {n_step}", flush=True)
   global n_arm_contact
   n_arm_contact += int(D.arm_arm_contact(env)[0])
   track()
@@ -485,6 +505,9 @@ wait(15)
 result = task1()
 print(f"[result] {result} | {n_step} steps, {time.time() - t0:.0f}s wall")
 print(f"[arm-arm] contact steps reported by the task's sensor: {n_arm_contact}")
+if T1 is not None:
+  print(f"[reward] {TASK}: return {ret:.2f}; episode sums "
+        + ", ".join(f"{k} {float(v[0]):.2f}" for k, v in env.reward_manager._episode_sums.items()))
 
 print(f"[collisions] {sum(len(v) for v in events.values())} contact episode(s) "
       f"over {len(events)} pair(s):" if events else "[collisions] none")
