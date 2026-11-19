@@ -8,6 +8,11 @@ This is a trimmed snapshot of the MedCVR lab's internal `surgical_lab` code: the
 package, the vendored `mujoco_warp`, and the scripts for the dual-arm task. It
 builds on the lab's single-arm peg-lift task and its reward functions.
 
+**New to remote GPUs, uv, wandb or tmux?** Start with
+[`docs/env_setup/`](docs/env_setup/README.md): a step-by-step guide from SSH-ing
+into a DH lab machine to watching your first training run in wandb, plus fixes
+for every problem we've hit.
+
 ## Setup
 
 Linux. An NVIDIA GPU (driver >= 570 / CUDA 12.8) for training; CPU works for
@@ -35,22 +40,61 @@ set -a; . scripts/a3_liftpeg_env.sh; set +a
 (`src/surgical_lab/tasks/lift/config/psm/liftpeg_dual.py`):
 
 - The single-arm `Surgicallab-Liftpeg-State-Shaped` task with a second PSM,
-  `robot2`, mounted facing the first (rotated 180 deg). Placement:
-  `DUAL_PSM2_TOOL_XY`, `DUAL_PSM2_YAW_DEG`.
+  `robot2`, mounted like the lab cart: both PSMs face the same way, side by
+  side, PSM2 250 mm to PSM1's right (seen from the front) with its shaft tilted
+  ~39 deg so the tools meet over the peg. Placement: `DUAL_PSM_LAYOUT`
+  (`side`, default, or the old `facing`), `DUAL_PSM2_BASE_DX`,
+  `DUAL_PSM2_TOOL_XY`. Colour/lighting randomisation is off in the dual tasks
+  (state-based; it only made videos flicker), `DUAL_VISUAL_DR=1` restores it. Arm 2's wrist is levelled so its jaws point straight
+  down like arm 1's (`DUAL_PSM2_WRIST_LEVEL=1`). In `side`, every arm link has collision geometry
+  against the other arm (boxes fitted to the upper links).
 - Actions, 8-D: `[dx, dy, dz, jaw]` for arm 1, then the same for arm 2.
   Position steps of 0.5 mm per 50 Hz step, in each arm's own base frame; the
   jaw is binary (>= 0 opens). Tool orientation is fixed for now.
 - Arm-arm contact on by default (`DUAL_PSM_ARM_CONTACT=0` turns it off).
 - State-based: no wall, no wrist-camera bracket.
-- **Reward, success and termination still score arm 1 only.** Arm 2's terms
-  are the next thing to build.
+- This PoC task's reward still scores arm 1 only; the Task 1 tasks below
+  score both arms.
+
+## Task 1 (relay): pure-PPO baseline
+
+Arm 1 lifts the ring off the peg and sets it on the goal; arm 2 picks it up
+and puts it back on the peg; the arms must never touch.
+
+| Task | Reward | Result (DH RTX 4080, 1024 envs, 6000 iterations, ~3.3 h) |
+|---|---|---|
+| `Surgicallab-Dual-Task1-Naive` (`dual_task1.py`) | v0: reach + move-to-target, handoff/success bonuses | Plateaus: arm 1 parks on the ring, never lifts it |
+| `Surgicallab-Dual-Task1-Staged` (`dual_task1_staged.py`) | v1.1: the single-arm staged potential per arm and phase, flat-handoff gate, release-height penalty | **~0.93 success** (training metrics), whole task in ~10.6 s, arm contact ~1% of episodes |
+
+Both end the episode on any arm-arm contact (-10). The staged task's
+`Episode_Metrics/phi_max` is the stage reached (1 grip, 7 ring off the post,
+14 handed off, 29 back on the peg); the docstring of `dual_task1_staged.py`
+has the full stage table and the history of what each fix addressed.
+
+```bash
+MUJOCO_GL=egl uv run train Surgicallab-Dual-Task1-Staged --env.scene.num-envs 1024 \
+  --agent.seed 42 --agent.run-name ppo-task1staged-s42-<initials> \
+  --video True --video-length 2000 --video-interval 24000
+```
+
+Evaluate a checkpoint (mean action, no exploration noise): success rate,
+completion time, and every arm-arm contact broken down by the pair of links
+that touched:
+
+```bash
+uv run python scripts/eval_task1.py \
+  --checkpoint logs/rsl_rl/dual_task1_staged/<run dir>/model_5999.pt \
+  --num-envs 256 --episodes 1024 --out eval_task1.json
+```
 
 ## Scripts
 
 | Script | What it does |
 |---|---|
 | `scripts/probe_dual_psm.py` | Smoke test: builds 1 env and checks the arms move independently, both reach the peg and goal, arm-arm contact, and a random-action soak. `SNAP=1 MUJOCO_GL=egl` also saves PNGs. |
-| `scripts/demo_dual_handoff.py` | Scripted demos recorded to mp4 (`MUJOCO_GL=egl`). `DEMO=relay` (default): arm 1 places the ring on the goal, arm 2 carries it on. `DEMO=midair`: arm 1 lifts it, arm 2 takes it in mid-air and places it. Flags every unexpected collision. |
+| `scripts/demo_task1.py` | Scripted Task 1 on the lab layout, recorded to mp4 (`MUJOCO_GL=egl`): arm 1 lifts the ring off the peg and sets it on the goal, arm 2 picks it up and re-inserts it on the peg. Counts arm-arm contacts (task sensor) and flags any arm part touching the scene. `DEMO_TASK=Surgicallab-Dual-Task1-Staged` prints what the reward saw at each stage; `DEMO_DROP=1` lets go from carry height instead (a negative check). |
+| `scripts/eval_task1.py` | Evaluates a trained Task 1 checkpoint: success rate, completion time, and which links touched on each arm-arm contact. |
+| `scripts/demo_dual_handoff.py` | (Old `facing` layout, set automatically.) Scripted demos recorded to mp4 (`MUJOCO_GL=egl`). `DEMO=relay` (default): arm 1 places the ring on the goal, arm 2 carries it on. `DEMO=midair`: arm 1 lifts it, arm 2 takes it in mid-air and places it. Flags every unexpected collision. |
 
 ```bash
 uv run python scripts/probe_dual_psm.py
@@ -66,6 +110,41 @@ uv run train Surgicallab-Liftpeg-Dual-State-PoC --env.scene.num-envs 1024
 
 (`--agent zero`/`random` with `uv run play <task> --viewer viser` opens a 3D
 browser viewer at http://localhost:8080 without a trained policy.)
+
+### Pipeline check: `Surgicallab-Dual-Reach-Dummy`
+
+Step-by-step for the team (DH lab machines, wandb, tmux, resuming, viewing the
+policy): [`docs/training_dummy_reach_dh.md`](docs/training_dummy_reach_dh.md).
+
+A throwaway objective for checking the training setup before the real
+bimanual reward exists: each arm reaches its own random target (a 30 x 30 x
+20 mm box around its home tool position, resampled every 4 s episode). Expect
+`Episode_Metrics/dist_1_mm` and `dist_2_mm` to fall from ~15 mm to a few mm,
+and `reached_rate` (both arms within 3 mm) to climb, within a few hundred
+iterations. See `src/surgical_lab/tasks/lift/config/psm/dual_reach_dummy.py`.
+
+```bash
+# once per machine: wandb login   (or export WANDB_API_KEY=...; never commit it)
+export WANDB_ENTITY=hardik-narkhede-university-of-toronto    # log to the team, not your personal account
+tmux new -s train
+MUJOCO_GL=egl uv run train Surgicallab-Dual-Reach-Dummy --env.scene.num-envs 1024 \
+  --agent.run-name ppo-dummyreach-s42 --video True --video-length 400 --video-interval 2400
+```
+
+Any contact between the two arms costs `DUAL_ARM_CONTACT_PENALTY` (default 10,
+about one whole episode's best return) and ends the episode
+(`DUAL_ARM_CONTACT_TERMINATE=1`); `Episode_Metrics/arm_contact_rate` is the
+fraction of episodes that had one. It covers the whole arm: instrument,
+parallelogram, carriage and base.
+
+It logs to the wandb project `csc413-dual-psm`. `--video True` uploads a clip of
+env 0 to wandb every ~100 iterations, filmed from the front with the two targets
+drawn as spheres (dual tasks set this view in `liftpeg_dual._add_video_view`). Checkpoints land in
+`logs/rsl_rl/dual_reach_dummy/<timestamp>_<run-name>/`: the newest
+`model_<iter>.pt` (every 100 iterations) plus `best.pt`. To continue after a
+crash or reboot, add `--agent.resume True` (it loads the newest run's newest
+checkpoint). On CPU it runs (`--gpu-ids None`), but at ~55 s per iteration
+with 16 envs, so use it only as a smoke test.
 
 ## Things to know
 

@@ -235,3 +235,55 @@ register_mjlab_task(
   rl_cfg=_dual_state_rl,
   runner_cls=SurgicalLabOnPolicyRunner,
 )
+
+# Dummy objective on the two-PSM scene: each arm reaches its own random target.
+# A pipeline check (PPO learns, both action slices work, wandb + checkpoints),
+# not a research task. See dual_reach_dummy.py.
+from .dual_reach_dummy import dual_reach_dummy_env_cfg  # noqa: E402
+
+_dual_reach_rl = psm_lift_peg_a3b_state_ppo_runner_cfg(low_entropy=True)
+_dual_reach_rl.experiment_name = "dual_reach_dummy"
+_dual_reach_rl.max_iterations = 500
+_dual_reach_rl.wandb_project = "csc413-dual-psm"
+register_mjlab_task(
+  task_id="Surgicallab-Dual-Reach-Dummy",
+  env_cfg=dual_reach_dummy_env_cfg(),
+  play_env_cfg=dual_reach_dummy_env_cfg(play=True),
+  rl_cfg=_dual_reach_rl,
+  runner_cls=SurgicalLabOnPolicyRunner,
+)
+
+# Task 1 (relay: arm 1 peg -> goal, arm 2 goal -> peg) with the naive v0 reward.
+# See dual_task1.py.
+from .dual_task1 import dual_task1_env_cfg  # noqa: E402
+
+_dual_task1_rl = psm_lift_peg_a3b_state_ppo_runner_cfg(low_entropy=True)
+_dual_task1_rl.experiment_name = "dual_task1_naive"
+_dual_task1_rl.max_iterations = 6000
+_dual_task1_rl.wandb_project = "csc413-dual-psm"
+register_mjlab_task(
+  task_id="Surgicallab-Dual-Task1-Naive",
+  env_cfg=dual_task1_env_cfg(),
+  play_env_cfg=dual_task1_env_cfg(play=True),
+  rl_cfg=_dual_task1_rl,
+  runner_cls=SurgicalLabOnPolicyRunner,
+)
+
+# Task 1 with reward v1: the single-arm staged potential, per arm and phase.
+# See dual_task1_staged.py.
+from .dual_task1_staged import dual_task1_staged_env_cfg  # noqa: E402
+
+_dual_task1s_rl = psm_lift_peg_a3b_state_ppo_runner_cfg(low_entropy=True)
+_dual_task1s_rl.experiment_name = "dual_task1_staged"
+_dual_task1s_rl.max_iterations = 6000
+_dual_task1s_rl.wandb_project = "csc413-dual-psm"
+# std bounded at ~1.2 (v0's unbounded std drifted to 2.8); must match entropy 0.005.
+assert _dual_task1s_rl.algorithm.entropy_coef == 0.005
+_dual_task1s_rl.actor.class_name = "surgical_lab.rl.bounded_actor:BoundedActorMLPStdLowEnt"
+register_mjlab_task(
+  task_id="Surgicallab-Dual-Task1-Staged",
+  env_cfg=dual_task1_staged_env_cfg(),
+  play_env_cfg=dual_task1_staged_env_cfg(play=True),
+  rl_cfg=_dual_task1s_rl,
+  runner_cls=SurgicalLabOnPolicyRunner,
+)
