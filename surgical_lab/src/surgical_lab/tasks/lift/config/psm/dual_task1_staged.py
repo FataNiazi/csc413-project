@@ -37,6 +37,20 @@ that in single-arm training).
 
 PHI is in return units: a full success is worth 29 + SUCCESS_BONUS = 34, the
 contact penalty 10. Every number is an env var (T1S_*).
+
+v1.1 (after run pfvo7emt: phase 0 learned by ~750 iterations, phase 1 never):
+
+  * Arm 1 learned to DROP the ring onto the goal from ~25 mm. It lands tipped,
+    often half on the square's edge, and arm 2 cannot pick it up. v1 allowed
+    that twice over: the handoff only asked for the ring to touch the goal,
+    and `place` pays for the ring being low, which a dropped ring reaches
+    instantly. Now the handoff also needs the ring lying FLAT (tilt <
+    T1S_FLAT_DEG), and letting go of it high costs a one-shot penalty scaled
+    by the ring's height at release (the single-arm release penalty: shaping
+    telescopes, so it cannot tell a drop from a set-down).
+  * Arm 2's lift was measured from the ring's height on the PEG PLATE (6 mm),
+    but on the goal it sits at 0.4 mm, so the first ~5.6 mm of arm 2's lift
+    paid nothing. It is now measured from where the ring was at the handoff.
 """
 
 import math
@@ -78,6 +92,15 @@ P1_LIFT = P1_BASE + 1.0                                     # 15
 P1_CARRY = P1_LIFT + LIFT_GAIN                              # 21
 P1_INSERT = P1_CARRY + CARRY_GAIN + ALIGN_GAIN              # 25
 P1_SEATED = P1_INSERT + INSERT_GAIN + 1.0                   # 29
+
+# v1.1. T1S_FLAT_DEG=180 T1S_RELEASE_PEN=0 T1S_LIFT2_FROM_HANDOFF=0 gives v1 back.
+FLAT_DEG = _f("T1S_FLAT_DEG", "15")
+# Above the whole place stage (3): dropping saves ~1 s of lowering, and once
+# phase 1 pays, getting there sooner is worth more than the stage itself.
+RELEASE_PEN = _f("T1S_RELEASE_PEN", "6")
+RELEASE_Z = _f("T1S_RELEASE_Z_MM", "6") / 1000.0       # ring origin (its bottom)
+RELEASE_SPAN = _f("T1S_RELEASE_SPAN_MM", "20") / 1000.0
+LIFT2_FROM_HANDOFF = os.environ.get("T1S_LIFT2_FROM_HANDOFF", "1") == "1"
 
 W_SHAPE = _f("T1S_W_SHAPE", "1.0")
 SUCCESS_BONUS = _f("T1S_SUCCESS_BONUS", "5")
@@ -148,6 +171,10 @@ class _State:
     self.z2_max = torch.zeros(n, device=dev)
     self.peg_min = torch.full((n,), peg_goal_d, device=dev)
     self.peg_goal_d = peg_goal_d
+    self.prev_contact1 = z()
+    self.z_hand = torch.full((n,), LR.Z_REST, device=dev)
+    self.release_z = torch.zeros(n, device=dev)     # mm, arm 1's last release
+    self.touched_goal = z()
 
 
 def _state(env) -> _State:
@@ -167,6 +194,10 @@ def reset_staged(env, env_ids: torch.Tensor | None = None) -> None:
   s.lift1_max[ids] = 0.0
   s.z2_max[ids] = 0.0
   s.peg_min[ids] = s.peg_goal_d
+  s.prev_contact1[ids] = False
+  s.z_hand[ids] = LR.Z_REST
+  s.release_z[ids] = 0.0
+  s.touched_goal[ids] = False
   env._t1s_cache = None
 
 
@@ -210,8 +241,20 @@ def terms(env) -> dict[str, torch.Tensor]:
   on_peg = (z < LR.Z_REST + T1.ON_PEG_DZ) & (d_peg_xy < T1.ON_PEG_XY)
   lift_frac = ((z - LR.Z_REST) / LR.LIFT_SPAN).clamp(0.0, 1.0)
 
+  q = ring_q
+  tilt = torch.rad2deg(torch.acos((1.0 - 2.0 * (q[:, 1] ** 2 + q[:, 2] ** 2)).clamp(-1.0, 1.0)))
+  flat = tilt < FLAT_DEG
+
   s = _state(env)
-  handed = (~s.phase1) & on_goal & ~contact[:, 0]
+  # Arm 1 letting go (both pads -> not both) of a lifted ring in phase 0.
+  released = (~s.phase1) & s.cleared1 & s.prev_contact1 & ~contact[:, 0]
+  rel_cost = ((z - RELEASE_Z) / RELEASE_SPAN).clamp(0.0, 1.0) * released.float()
+  s.release_z = torch.where(released, z * 1000.0, s.release_z)
+  s.prev_contact1 = contact[:, 0].clone()
+  s.touched_goal = s.touched_goal | ((~s.phase1) & on_goal)
+
+  handed = (~s.phase1) & on_goal & flat & ~contact[:, 0]
+  s.z_hand = torch.where(handed, z, s.z_hand)
   s.phase1 = s.phase1 | handed
   p1 = s.phase1
   s.cleared1 = s.cleared1 | ((~p1) & (z >= CLEAR_Z))
@@ -242,7 +285,11 @@ def terms(env) -> dict[str, torch.Tensor]:
   phi0 = torch.where(s.cleared1 & (d_goal_xy < LR.GOAL_HALF), place0, phi0)
 
   reach1 = P1_BASE + 1.0 - torch.tanh(REACH_K * d_grip[:, 1])
-  lift1 = P1_LIFT + LIFT_GAIN * lift_frac
+  if LIFT2_FROM_HANDOFF:
+    lift2_frac = ((z - s.z_hand) / (LR.CLEAR_Z - s.z_hand).clamp_min(1e-3)).clamp(0.0, 1.0)
+  else:
+    lift2_frac = lift_frac
+  lift1 = P1_LIFT + LIFT_GAIN * lift2_frac
   carry1 = (P1_CARRY + CARRY_GAIN * (1.0 - torch.tanh(PEG_K * d_peg_xy))
             + ALIGN_GAIN * (1.0 - torch.tanh(d_peg_xy / ALIGN_STD)))
   down1 = ((CLEAR_Z - z) / (CLEAR_Z - LR.Z_REST)).clamp(0.0, 1.0)
@@ -265,6 +312,7 @@ def terms(env) -> dict[str, torch.Tensor]:
     "success": success, "lost": lost, "phi": phi, "target": target,
     "cleared": torch.stack([s.cleared1, s.cleared2], -1),
     "d_goal_xy": d_goal_xy, "d_peg_xy": d_peg_xy,
+    "tilt": tilt, "released": released, "rel_cost": rel_cost,
   }
   env._t1s_cache = (key, out)
   return out
@@ -309,6 +357,12 @@ def r_success(env):
   return terms(env)["success"].float()
 
 
+def r_release(env):
+  """One-shot, at arm 1's release: 0 if the ring is set down, 1 if let go
+  from RELEASE_Z + RELEASE_SPAN or higher."""
+  return terms(env)["rel_cost"]
+
+
 def r_lost(env):
   return terms(env)["lost"].float()
 
@@ -347,6 +401,16 @@ def m_grip1_mm(env):
   return terms(env)["d_grip"][:, 0] * 1000.0
 
 
+def m_release_1_mm(env):
+  terms(env)
+  return _state(env).release_z
+
+
+def m_touched_goal(env):
+  terms(env)
+  return _state(env).touched_goal.float()
+
+
 def m_ring_goal_mm(env):
   return terms(env)["d_goal_xy"] * 1000.0
 
@@ -370,6 +434,8 @@ def dual_task1_staged_env_cfg(play: bool = False):
     "success": RewardTermCfg(func=r_success, weight=SUCCESS_BONUS / dt),
     "lost": RewardTermCfg(func=r_lost, weight=-LOST_PENALTY / dt),
   }
+  if RELEASE_PEN > 0:
+    cfg.rewards["release"] = RewardTermCfg(func=r_release, weight=-RELEASE_PEN / dt)
   cfg.terminations = {
     "time_out": TerminationTermCfg(func=base_mdp.time_out, time_out=True),
     **({"nan_state": cfg.terminations["nan_state"]}
@@ -382,6 +448,11 @@ def dual_task1_staged_env_cfg(play: bool = False):
     # Progress in one number: highest PHI reached (stage table in the docstring).
     "phi_max": M(func=m_key, params={"key": "phi"}, reduce="max"),
     "handoff_rate": M(func=m_key, params={"key": "phase1"}, reduce="max"),
+    # Ring reached the goal in phase 0, flat or not. Well above handoff_rate
+    # means it is landing tipped.
+    "goal_touch_rate": M(func=m_touched_goal, reduce="last"),
+    "release_1_mm": M(func=m_release_1_mm, reduce="last"),   # ring height at arm 1's last release
+    "tilt_deg": M(func=m_key, params={"key": "tilt"}, reduce="last"),
     "success_rate": M(func=m_key, params={"key": "success"}, reduce="max"),
     "lost_rate": M(func=m_key, params={"key": "lost"}, reduce="max"),
     "held_1_frac": M(func=m_key, params={"key": "held", "col": 0}, reduce="mean"),

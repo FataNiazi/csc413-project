@@ -57,6 +57,7 @@ np.random.seed(SEED)
 # and reports what its reward saw (phase switch, success, return): a check that
 # the reward fires on a known-good episode.
 TASK = os.environ.get("DEMO_TASK", "Surgicallab-Liftpeg-Dual-State-PoC")
+DROP = os.environ.get("DEMO_DROP", "0") == "1"
 cfg = load_env_cfg(TASK)
 cfg.scene.num_envs = 1
 if "arm_contact_rate" not in cfg.metrics:
@@ -332,6 +333,12 @@ def step(active=None, err=None):
       if band > _seen["phi_band"]:
         _seen["phi_band"] = band
         print(f"        [reward] phi reached {float(t['phi'][0]):.2f} at step {n_step}", flush=True)
+      if "released" in t and bool(t["released"][0]):
+        print(f"        [reward] arm 1 released at ring z {float(t['ring'][0, 2]) * 1000:.1f} mm, "
+              f"release cost {float(t['rel_cost'][0]):.2f}, tilt {float(t['tilt'][0]):.1f} deg",
+              flush=True)
+      if bool(t["handed"][0]):
+        print(f"        [reward] handoff: ring tilt {float(t['tilt'][0]):.1f} deg", flush=True)
       if bool(t["lost"][0]) and not _seen["lost"]:
         _seen["lost"] = True
         print(f"        [reward] LOST fired at step {n_step}", flush=True)
@@ -490,6 +497,15 @@ def task1():
 
   goal = pos("goal")
   ok1 = pick("robot", T.LIFT_RISE, "Arm 1")
+  if ok1 and DROP:
+    # Negative check for the reward: let go over the goal from carry height.
+    carry("robot", goal[:2], "Arm 1")
+    say("Arm 1: DROP from carry height (DEMO_DROP=1)")
+    jaw_open["robot"] = True
+    wait(150)
+    on_goal = bool(LR.block_at_goal(env)[0])
+    print(f"        ring at {np.round(ring() * 1000, 1)} mm; on goal: {on_goal}")
+    return f"DROP check: ring on goal {on_goal} (arm 2 skipped)"
   if ok1:
     place("robot", goal[:2], "Arm 1")
   on_goal = bool(LR.block_at_goal(env)[0])
