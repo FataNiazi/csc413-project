@@ -69,7 +69,9 @@ and puts it back on the peg; the arms must never touch.
 Both end the episode on any arm-arm contact (-10). The staged task's
 `Episode_Metrics/phi_max` is the stage reached (1 grip, 7 ring off the post,
 14 handed off, 29 back on the peg); the docstring of `dual_task1_staged.py`
-has the full stage table and the history of what each fix addressed.
+has the full stage table and the history of what each fix addressed. The full
+write-up (every formula, in code variables and in the state-information terms,
+with results): [`docs/task1_reward.md`](docs/task1_reward.md).
 
 ```bash
 MUJOCO_GL=egl uv run train Surgicallab-Dual-Task1-Staged --env.scene.num-envs 1024 \
