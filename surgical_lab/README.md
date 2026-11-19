@@ -53,15 +53,47 @@ set -a; . scripts/a3_liftpeg_env.sh; set +a
   jaw is binary (>= 0 opens). Tool orientation is fixed for now.
 - Arm-arm contact on by default (`DUAL_PSM_ARM_CONTACT=0` turns it off).
 - State-based: no wall, no wrist-camera bracket.
-- **Reward, success and termination still score arm 1 only.** Arm 2's terms
-  are the next thing to build.
+- This PoC task's reward still scores arm 1 only; the Task 1 tasks below
+  score both arms.
+
+## Task 1 (relay): pure-PPO baseline
+
+Arm 1 lifts the ring off the peg and sets it on the goal; arm 2 picks it up
+and puts it back on the peg; the arms must never touch.
+
+| Task | Reward | Result (DH RTX 4080, 1024 envs, 6000 iterations, ~3.3 h) |
+|---|---|---|
+| `Surgicallab-Dual-Task1-Naive` (`dual_task1.py`) | v0: reach + move-to-target, handoff/success bonuses | Plateaus: arm 1 parks on the ring, never lifts it |
+| `Surgicallab-Dual-Task1-Staged` (`dual_task1_staged.py`) | v1.1: the single-arm staged potential per arm and phase, flat-handoff gate, release-height penalty | **~0.93 success** (training metrics), whole task in ~10.6 s, arm contact ~1% of episodes |
+
+Both end the episode on any arm-arm contact (-10). The staged task's
+`Episode_Metrics/phi_max` is the stage reached (1 grip, 7 ring off the post,
+14 handed off, 29 back on the peg); the docstring of `dual_task1_staged.py`
+has the full stage table and the history of what each fix addressed.
+
+```bash
+MUJOCO_GL=egl uv run train Surgicallab-Dual-Task1-Staged --env.scene.num-envs 1024 \
+  --agent.seed 42 --agent.run-name ppo-task1staged-s42-<initials> \
+  --video True --video-length 2000 --video-interval 24000
+```
+
+Evaluate a checkpoint (mean action, no exploration noise): success rate,
+completion time, and every arm-arm contact broken down by the pair of links
+that touched:
+
+```bash
+uv run python scripts/eval_task1.py \
+  --checkpoint logs/rsl_rl/dual_task1_staged/<run dir>/model_5999.pt \
+  --num-envs 256 --episodes 1024 --out eval_task1.json
+```
 
 ## Scripts
 
 | Script | What it does |
 |---|---|
 | `scripts/probe_dual_psm.py` | Smoke test: builds 1 env and checks the arms move independently, both reach the peg and goal, arm-arm contact, and a random-action soak. `SNAP=1 MUJOCO_GL=egl` also saves PNGs. |
-| `scripts/demo_task1.py` | Scripted Task 1 on the lab layout, recorded to mp4 (`MUJOCO_GL=egl`): arm 1 lifts the ring off the peg and sets it on the goal, arm 2 picks it up and re-inserts it on the peg. Counts arm-arm contacts (task sensor) and flags any arm part touching the scene. |
+| `scripts/demo_task1.py` | Scripted Task 1 on the lab layout, recorded to mp4 (`MUJOCO_GL=egl`): arm 1 lifts the ring off the peg and sets it on the goal, arm 2 picks it up and re-inserts it on the peg. Counts arm-arm contacts (task sensor) and flags any arm part touching the scene. `DEMO_TASK=Surgicallab-Dual-Task1-Staged` prints what the reward saw at each stage; `DEMO_DROP=1` lets go from carry height instead (a negative check). |
+| `scripts/eval_task1.py` | Evaluates a trained Task 1 checkpoint: success rate, completion time, and which links touched on each arm-arm contact. |
 | `scripts/demo_dual_handoff.py` | (Old `facing` layout, set automatically.) Scripted demos recorded to mp4 (`MUJOCO_GL=egl`). `DEMO=relay` (default): arm 1 places the ring on the goal, arm 2 carries it on. `DEMO=midair`: arm 1 lifts it, arm 2 takes it in mid-air and places it. Flags every unexpected collision. |
 
 ```bash
