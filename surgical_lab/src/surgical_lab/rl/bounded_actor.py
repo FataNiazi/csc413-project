@@ -207,3 +207,15 @@ class BoundedMAEPretrainedStd(_SoftBoundMixin, MAEPretrainedModel):
 
   _ENTROPY_COEF = 0.005
   _SIGMA_MAX = SIGMA_SOFT_BOUND
+
+
+class BoundedActorMLPStdLowEnt(BoundedActorMLP):
+  """BoundedActorMLPStd at entropy 0.005 (the low-entropy state recipe).
+
+  For the dual-PSM Task 1 runs: with the naive reward the unbounded MLP's std
+  ran 0.5 -> 2.8 once the reward went flat (run 1xcaxun9). Equilibrium
+  entropy_coef / sigma == 2 * BOUNDS_COEF * (sigma - 1) puts sigma at ~1.21.
+  """
+
+  _SIGMA_MAX = SIGMA_SOFT_BOUND
+  _ENTROPY_COEF = 0.005

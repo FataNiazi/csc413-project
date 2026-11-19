@@ -249,8 +249,11 @@ ret = 0.0
 t1_success_seen = [False]
 if TASK == "Surgicallab-Dual-Task1-Naive":
   from surgical_lab.tasks.lift.config.psm import dual_task1 as T1
+elif TASK == "Surgicallab-Dual-Task1-Staged":
+  from surgical_lab.tasks.lift.config.psm import dual_task1_staged as T1
 else:
   T1 = None
+_seen = {"held": None, "phi_band": -1, "lost": False}
 renderer = mujoco.Renderer(m, H, W)
 cam = mujoco.MjvCamera()
 cam.lookat[:] = ORIG.cpu().numpy() + np.array([-0.025, 0.012, 0.055])
@@ -319,6 +322,19 @@ def step(active=None, err=None):
     if bool(t["success"][0]) and not t1_success_seen[0]:
       t1_success_seen[0] = True
       print(f"        [reward] SUCCESS fired at step {n_step}", flush=True)
+    if "phi" in t:
+      held = tuple(bool(x) for x in t["held"][0])
+      if held != _seen["held"]:
+        _seen["held"] = held
+        print(f"        [reward] held (strict) arm1={held[0]} arm2={held[1]} at step {n_step}, "
+              f"phi {float(t['phi'][0]):.2f}", flush=True)
+      band = int(float(t["phi"][0]))
+      if band > _seen["phi_band"]:
+        _seen["phi_band"] = band
+        print(f"        [reward] phi reached {float(t['phi'][0]):.2f} at step {n_step}", flush=True)
+      if bool(t["lost"][0]) and not _seen["lost"]:
+        _seen["lost"] = True
+        print(f"        [reward] LOST fired at step {n_step}", flush=True)
   global n_arm_contact
   n_arm_contact += int(D.arm_arm_contact(env)[0])
   track()
