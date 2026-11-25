@@ -287,3 +287,21 @@ register_mjlab_task(
   rl_cfg=_dual_task1s_rl,
   runner_cls=SurgicalLabOnPolicyRunner,
 )
+
+# Task 2 (mid-air handover), reward v0: Task 1's staged potential re-staged for
+# the exchange in the air. See dual_task2_handover.py. Task 1 is unchanged.
+from .dual_task2_handover import dual_task2_handover_env_cfg  # noqa: E402
+
+_dual_task2_rl = psm_lift_peg_a3b_state_ppo_runner_cfg(low_entropy=True)
+_dual_task2_rl.experiment_name = "dual_task2_handover"
+_dual_task2_rl.max_iterations = 6000
+_dual_task2_rl.wandb_project = "csc413-dual-psm"
+assert _dual_task2_rl.algorithm.entropy_coef == 0.005
+_dual_task2_rl.actor.class_name = "surgical_lab.rl.bounded_actor:BoundedActorMLPStdLowEnt"
+register_mjlab_task(
+  task_id="Surgicallab-Dual-Task2-Handover",
+  env_cfg=dual_task2_handover_env_cfg(),
+  play_env_cfg=dual_task2_handover_env_cfg(play=True),
+  rl_cfg=_dual_task2_rl,
+  runner_cls=SurgicalLabOnPolicyRunner,
+)
