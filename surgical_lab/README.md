@@ -89,6 +89,15 @@ uv run python scripts/eval_task1.py \
   --num-envs 256 --episodes 1024 --out eval_task1.json
 ```
 
+## Task 2 (mid-air handover): reward v0, untrained
+
+Arm 1 lifts the ring off the peg, arm 2 takes it from arm 1 in the air, arm 1
+lets go, and arm 2 sets it down flat on the goal. `Surgicallab-Dual-Task2-Handover`
+(`dual_task2_handover.py`): Task 1's staged reward re-staged for the exchange.
+The scripted handover (`scripts/demo_task2.py`) shows it is possible in this
+layout; the reward has not been trained yet. Write-up, with the scripted
+results and every formula: [`docs/task2_reward.md`](docs/task2_reward.md).
+
 ## Scripts
 
 | Script | What it does |
