@@ -103,6 +103,24 @@ V1_P1_CARRY = V1_P1_BASE + 1.0                               # 18
 V1_P1_PLACE = V1_P1_CARRY + SPOT_CARRY_GAIN                  # 19
 V1_P1_ON_GOAL = V1_P1_PLACE + PLACE_GAIN + 1.0               # 23
 
+# --- Reinsert variant (task Surgicallab-Dual-Task2-Reinsert): v1's phase 0, but
+# the handover itself must happen at the spot (v1 only gated the reward stages
+# there, and its policy handed over above the peg instead), and arm 2 then puts
+# the ring back on the peg with Task 1's phase-1 stages.
+HAND_R = _f("T2_HAND_R_MM", "30") / 1000.0       # handover counts only this close to the spot
+R_CARRY_GAIN = _f("T2R_CARRY_GAIN", "3")
+R_ALIGN_GAIN = _f("T2R_ALIGN_GAIN", "1")
+R_INSERT_GAIN = _f("T2R_INSERT_GAIN", "3")
+PEG_K = S.PEG_K
+ALIGN_STD = S.ALIGN_STD
+INSERT_XY = S.INSERT_XY
+
+R_P1_BASE = V1_P1_BASE                                       # 17
+R_LIFT = R_P1_BASE + 1.0                                     # 18
+R_CARRY = R_LIFT + 1.0                                       # 19
+R_INSERT = R_CARRY + R_CARRY_GAIN + R_ALIGN_GAIN             # 23
+R_SEATED = R_INSERT + R_INSERT_GAIN + 1.0                    # 27
+
 AIR_Z = _f("T2_AIR_Z_MM", "20") / 1000.0       # ring origin (its bottom): clear of plate and goal
 HAND_WINDOW = int(_f("T2_HAND_WINDOW", "10"))  # steps since arm 1 last had its pads on
 FLAT_DEG = _f("T2_FLAT_DEG", "15")
@@ -145,6 +163,9 @@ class _State:
     self.spot_min = torch.full((n,), 1.0, device=dev)   # v1: ring's closest to the spot
     self.at_spot_ever = z()
     self.touch2_ever = z()
+    self.cleared2 = z()                                   # reinsert: arm 2 has it above the post
+    self.peg_min = torch.full((n,), 1.0, device=dev)      # reinsert: phase-1 closest to the peg
+    self.hand_spot = torch.zeros(n, device=dev)           # mm, ring-to-spot at the handover
 
 
 def _state(env) -> _State:
@@ -155,8 +176,10 @@ def _state(env) -> _State:
   return s
 
 
-def reset_handover(env, env_ids: torch.Tensor | None = None, spot: bool = False) -> None:
-  env._t2_spot = spot
+def reset_handover(env, env_ids: torch.Tensor | None = None, spot: bool = False,
+                   reinsert: bool = False) -> None:
+  env._t2_spot = spot or reinsert
+  env._t2_reinsert = reinsert
   s = _state(env)
   ids = slice(None) if env_ids is None else env_ids
   s.phase1[ids] = False
@@ -172,6 +195,9 @@ def reset_handover(env, env_ids: torch.Tensor | None = None, spot: bool = False)
   s.spot_min[ids] = 1.0
   s.at_spot_ever[ids] = False
   s.touch2_ever[ids] = False
+  s.cleared2[ids] = False
+  s.peg_min[ids] = 1.0
+  s.hand_spot[ids] = 0.0
   env._t2_cache = None
 
 
@@ -221,6 +247,12 @@ def terms(env) -> dict[str, torch.Tensor]:
 
   s = _state(env)
   p1_prev = s.phase1.clone()
+  spot = bool(getattr(env, "_t2_spot", False))
+  reinsert = bool(getattr(env, "_t2_reinsert", False))
+  spot_pt = torch.cat([goal[:, :2], torch.full_like(z[:, None], SPOT_Z)], -1)
+  d_spot = torch.linalg.norm(ring - spot_pt, dim=-1)
+  d_peg_xy = torch.linalg.norm(ring[:, :2] - peg[:, :2], dim=-1)
+  on_peg = (z < LR.Z_REST + T1.ON_PEG_DZ) & (d_peg_xy < T1.ON_PEG_XY)
 
   # Releases: an arm's pads come off a raised ring the other arm is not holding.
   let_go = s.prev_contact & ~contact                                               # (n,2)
@@ -233,6 +265,9 @@ def terms(env) -> dict[str, torch.Tensor]:
 
   # Handover: arm 2 alone, ring in the air, arm 1's pads on it moments ago.
   handed = (~p1_prev) & h1 & ~contact[:, 0] & in_air & (s.since_pads1 <= HAND_WINDOW)
+  if reinsert:
+    handed = handed & (d_spot < HAND_R)
+  s.hand_spot = torch.where(handed, d_spot * 1000.0, s.hand_spot)
   s.z_hand = torch.where(handed, z * 1000.0, s.z_hand)
   s.phase1 = s.phase1 | handed
   p1 = s.phase1
@@ -240,9 +275,7 @@ def terms(env) -> dict[str, torch.Tensor]:
   s.since_pads1 = torch.where(contact[:, 0], torch.zeros_like(s.since_pads1), s.since_pads1 + 1)
   s.prev_contact = contact.clone()
   s.cleared1 = s.cleared1 | ((~p1) & h0 & (z >= CLEAR_Z))
-  spot = bool(getattr(env, "_t2_spot", False))
-  spot_pt = torch.cat([goal[:, :2], torch.full_like(z[:, None], SPOT_Z)], -1)
-  d_spot = torch.linalg.norm(ring - spot_pt, dim=-1)
+  s.cleared2 = s.cleared2 | (p1 & h1 & (z >= CLEAR_Z))
   at_spot = (~p1) & s.cleared1 & h0 & (d_spot < SPOT_R)
   touch2 = at_spot & contact[:, 1]
   both = (~p1) & h0 & h1 & in_air
@@ -252,6 +285,8 @@ def terms(env) -> dict[str, torch.Tensor]:
 
   resting = on_goal & flat
   success = p1 & resting & ~contact[:, 1]
+  if reinsert:
+    success = p1 & on_peg & ~contact[:, 1]
 
   floor = z <= LR.DOWN_Z
   far = d_goal_xy > LR.GOAL_HALF + LR.LOST_MARGIN
@@ -265,6 +300,7 @@ def terms(env) -> dict[str, torch.Tensor]:
   s.spot_min = torch.where((~p1) & s.cleared1 & h0, torch.minimum(s.spot_min, d_spot), s.spot_min)
   s.at_spot_ever = s.at_spot_ever | at_spot
   s.touch2_ever = s.touch2_ever | touch2
+  s.peg_min = torch.where(p1, torch.minimum(s.peg_min, d_peg_xy), s.peg_min)
 
   # --- the potential ---
   reach0 = 1.0 - torch.tanh(REACH_K * d_grip[:, 0])
@@ -301,23 +337,38 @@ def terms(env) -> dict[str, torch.Tensor]:
     phi1 = torch.where(h1 & (d_goal_xy < LR.GOAL_HALF), place1, phi1)
     phi1 = torch.where(resting, torch.full_like(phi1, V1_P1_ON_GOAL), phi1)
 
+  if reinsert:
+    # Task 1's phase-1 stages: lift clear of the post, carry over it (coarse +
+    # fine), lower the bore down the post, seated.
+    regrasp = R_P1_BASE + 1.0 - torch.tanh(REACH_K * d_grip[:, 1])
+    lift2 = R_LIFT + ((z - AIR_Z) / (CLEAR_Z - AIR_Z)).clamp(0.0, 1.0)
+    carry2 = (R_CARRY + R_CARRY_GAIN * (1.0 - torch.tanh(PEG_K * d_peg_xy))
+              + R_ALIGN_GAIN * (1.0 - torch.tanh(d_peg_xy / ALIGN_STD)))
+    down2 = ((CLEAR_Z - z) / (CLEAR_Z - LR.Z_REST)).clamp(0.0, 1.0)
+    insert2 = R_INSERT + R_INSERT_GAIN * down2
+    phi1 = torch.where(h1, lift2, regrasp)
+    phi1 = torch.where(s.cleared2 & h1, carry2, phi1)
+    phi1 = torch.where(s.cleared2 & (d_peg_xy < INSERT_XY), insert2, phi1)
+    phi1 = torch.where(s.cleared2 & on_peg, torch.full_like(phi1, R_SEATED), phi1)
+
   phi = torch.where(p1, phi1, phi0)
 
   # Observation waypoint: up off the post (v0) or the spot (v1) in phase 0, the
   # goal in phase 1.
   wp0 = spot_pt if spot else torch.cat([peg[:, :2], torch.full_like(z[:, None], CLEAR_Z)], -1)
-  target = torch.where(p1[:, None],
-                       torch.cat([goal[:, :2], torch.full_like(z[:, None], LR.Z_REST)], -1),
-                       wp0)
+  wp1 = (torch.cat([peg[:, :2], torch.full_like(z[:, None], CLEAR_Z)], -1) if reinsert
+         else torch.cat([goal[:, :2], torch.full_like(z[:, None], LR.Z_REST)], -1))
+  target = torch.where(p1[:, None], wp1, wp0)
+  cleared_obs = torch.where(p1, s.cleared2, s.cleared1) if reinsert else s.cleared1
   out = {
     "tools": tools, "ring": ring, "ring_q": ring_q, "goal": goal, "peg": peg, "jaw": jaw,
     "contact": contact, "held": held, "d_grip": d_grip,
     "grip_vec": torch.stack(grip_vec, 1), "lift_frac": lift_frac,
     "on_goal": on_goal, "phase1": p1, "handed": handed, "both": both,
     "success": success, "lost": lost, "phi": phi, "target": target,
-    "cleared": s.cleared1, "in_air": in_air, "d_goal_xy": d_goal_xy,
+    "cleared": cleared_obs, "in_air": in_air, "d_goal_xy": d_goal_xy,
     "tilt": tilt, "released": released, "rel_cost": rel_cost,
-    "d_spot": d_spot, "at_spot": at_spot, "touch2": touch2,
+    "d_spot": d_spot, "at_spot": at_spot, "touch2": touch2, "on_peg": on_peg,
   }
   env._t2_cache = (key, out)
   return out
@@ -395,6 +446,11 @@ def m_goal_mm(env):
   return _state(env).goal_min * 1000.0
 
 
+def m_peg_mm(env):
+  terms(env)
+  return _state(env).peg_min * 1000.0
+
+
 def m_spot_mm(env):
   terms(env)
   return _state(env).spot_min * 1000.0
@@ -427,15 +483,18 @@ def m_ring_friction(env):
   return f[ids, 0].mean().expand(env.num_envs)
 
 
-def dual_task2_handover_env_cfg(play: bool = False, spot: bool = False):
+def dual_task2_handover_env_cfg(play: bool = False, spot: bool = False, reinsert: bool = False):
   """spot=False: v0 (Surgicallab-Dual-Task2-Handover). spot=True: v1, the
-  exchange at a fixed point above the goal (Surgicallab-Dual-Task2-Spot)."""
+  exchange at a fixed point above the goal (Surgicallab-Dual-Task2-Spot).
+  reinsert=True: hand over at the spot, then arm 2 puts the ring back on the
+  peg (Surgicallab-Dual-Task2-Reinsert)."""
+  spot = spot or reinsert
   cfg = D.psm_lift_peg_dual_env_cfg(play=play, reward="e_shaped", state_only=True)
   cfg.episode_length_s = EPISODE_S
   dt = cfg.sim.mujoco.timestep * cfg.decimation
 
   cfg.events["reset_task2_handover"] = EventTermCfg(mode="reset", func=reset_handover,
-                                                        params={"spot": spot})
+                                                        params={"spot": spot, "reinsert": reinsert})
 
   obs = cfg.observations["critic"].terms
   obs.pop("state", None)
@@ -481,5 +540,9 @@ def dual_task2_handover_env_cfg(play: bool = False, spot: bool = False):
     cfg.metrics["spot_mm"] = M(func=m_spot_mm, reduce="last")      # 1000 = never cleared
     cfg.metrics["at_spot_rate"] = M(func=m_state, params={"attr": "at_spot_ever"}, reduce="last")
     cfg.metrics["touch_2_rate"] = M(func=m_state, params={"attr": "touch2_ever"}, reduce="last")
+  if reinsert:
+    cfg.metrics["hand_spot_mm"] = M(func=m_state, params={"attr": "hand_spot"}, reduce="last")
+    cfg.metrics["cleared_2_rate"] = M(func=m_state, params={"attr": "cleared2"}, reduce="last")
+    cfg.metrics["ring_peg_2_mm"] = M(func=m_peg_mm, reduce="last")   # phase-1 closest; 1000 = never
   D.add_arm_contact_safety(cfg)
   return cfg

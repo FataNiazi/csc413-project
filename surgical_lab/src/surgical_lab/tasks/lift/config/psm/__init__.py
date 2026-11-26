@@ -321,3 +321,19 @@ register_mjlab_task(
   rl_cfg=_dual_task2s_rl,
   runner_cls=SurgicalLabOnPolicyRunner,
 )
+
+# Task 2, reinsert variant: hand over at the spot above the goal (enforced),
+# then arm 2 puts the ring back on the peg. Same file, reinsert=True.
+_dual_task2r_rl = psm_lift_peg_a3b_state_ppo_runner_cfg(low_entropy=True)
+_dual_task2r_rl.experiment_name = "dual_task2_reinsert"
+_dual_task2r_rl.max_iterations = 6000
+_dual_task2r_rl.wandb_project = "csc413-dual-psm"
+assert _dual_task2r_rl.algorithm.entropy_coef == 0.005
+_dual_task2r_rl.actor.class_name = "surgical_lab.rl.bounded_actor:BoundedActorMLPStdLowEnt"
+register_mjlab_task(
+  task_id="Surgicallab-Dual-Task2-Reinsert",
+  env_cfg=dual_task2_handover_env_cfg(reinsert=True),
+  play_env_cfg=dual_task2_handover_env_cfg(play=True, reinsert=True),
+  rl_cfg=_dual_task2r_rl,
+  runner_cls=SurgicalLabOnPolicyRunner,
+)

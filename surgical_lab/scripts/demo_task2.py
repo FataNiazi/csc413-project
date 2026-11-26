@@ -461,6 +461,38 @@ def place(arm, xy, label, by_ring=False):
   goto(arm, np.array([*tool(arm)[:2], T.APPROACH_Z]), z_tol=2e-3)
 
 
+# --- reinsert on the peg (from demo_task1.py) ---------------------------------------
+REINSERT = os.environ.get("DEMO_REINSERT", "0") == "1"   # arm 2 ends on the peg, not the goal
+
+
+def peg_xy():
+  return pos("peg")[:2]
+
+
+def on_peg():
+  """Ring resting down on the post: low, and its bore centred on the post."""
+  off = np.linalg.norm(ring()[:2] - peg_xy())
+  return bool(ring()[2] < LR.Z_REST + 0.003 and off < LS.RING_CLEARANCE + 0.0005), off
+
+
+def reinsert(arm, label):
+  """Carry the held ring over the post and lower its bore down onto it."""
+  lift = max(0.0, LR.CLEAR_Z + 0.006 - ring()[2])
+  if lift > 0:
+    say(f"{label}: raise the ring clear of the post")
+    goto(arm, tool(arm) + np.array([0.0, 0.0, lift]), z_tol=T.Z_TOL)
+  say(f"{label}: carry over the peg")
+  goto(arm, None, xy_tol=0.6e-3, max_steps=900, target_fn=_over(arm, peg_xy(), tool(arm)[2]))
+  say(f"{label}: lower onto the post")
+  goto(arm, None, z_tol=0.8e-3, max_steps=900, target_fn=lambda: _over(
+    arm, peg_xy(), tool(arm)[2] - (ring()[2] - LR.Z_REST))())
+  say(f"{label}: release")
+  jaw_open[arm] = True
+  wait(T.RELEASE_STEPS)
+  say(f"{label}: back off")
+  goto(arm, np.array([*tool(arm)[:2], T.APPROACH_Z]), z_tol=2e-3)
+
+
 # --- task 2 -------------------------------------------------------------------------
 PARK2 = np.array([-0.085, 0.012, 0.100])
 HOME1 = np.array([0.040, 0.012, 0.100])
@@ -650,10 +682,13 @@ def task2():
         goto("robot2", tool("robot2") + np.array([0.0, 0.0, LR.CLEAR_Z + 0.004 - ring()[2]]),
              z_tol=T.Z_TOL)
       try:
-        place("robot2", pos("goal")[:2], "Arm 2", by_ring=True)
+        if REINSERT:
+          reinsert("robot2", "Arm 2")
+        else:
+          place("robot2", pos("goal")[:2], "Arm 2", by_ring=True)
       except Dropped as e:
         print(f"        ! DROPPED: {e}")
-      ok_goal = bool(LR.block_at_goal(env)[0])
+      ok_goal = on_peg()[0] if REINSERT else bool(LR.block_at_goal(env)[0])
       q = env.scene["block"].data.root_link_quat_w[0].cpu().numpy()
       flat = math.degrees(math.acos(max(-1.0, min(1.0, 1 - 2 * (q[1] ** 2 + q[2] ** 2)))))
   final = ring()
@@ -661,7 +696,7 @@ def task2():
   goto("robot2", PARK2, xy_tol=3e-3, z_tol=3e-3, max_steps=300)
   wait(40)
   return (f"arm1 pick: {'OK' if ok1 else 'FAIL'} | both holding: {'OK' if ok_both else 'FAIL'} | "
-          f"mid-air handover: {'OK' if ok_hand else 'FAIL'} | arm2 place on goal: "
+          f"mid-air handover: {'OK' if ok_hand else 'FAIL'} | arm2 {'re-insert on peg' if REINSERT else 'place on goal'}: "
           f"{'OK' if ok_goal else 'FAIL'} (tilt {flat:.1f} deg)")
 
 
