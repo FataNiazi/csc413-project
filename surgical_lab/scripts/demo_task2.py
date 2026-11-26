@@ -250,7 +250,7 @@ writer = iio.get_writer(OUT, fps=round(1.0 / (env.step_dt * FRAME_EVERY)),
 n_frames, caption, n_step, n_arm_contact = 0, "", 0, 0
 ret = 0.0
 t1_success_seen = [False]
-if TASK == "Surgicallab-Dual-Task2-Handover":
+if TASK.startswith("Surgicallab-Dual-Task2-"):
   from surgical_lab.tasks.lift.config.psm import dual_task2_handover as T1
 else:
   T1 = None
@@ -466,7 +466,9 @@ PARK2 = np.array([-0.085, 0.012, 0.100])
 HOME1 = np.array([0.040, 0.012, 0.100])
 # Where arm 1 holds the ring up for the exchange (ring centre, env frame). Between
 # the peg and the goal, at a height that keeps the ring clear of the post.
-HANDOFF_XY = np.array([float(x) for x in os.environ.get("DEMO_HANDOFF_XY", "-0.020,0.010").split(",")])
+# DEMO_HANDOFF_XY=goal: over the goal, where Surgicallab-Dual-Task2-Spot wants it.
+_HXY = os.environ.get("DEMO_HANDOFF_XY", "-0.020,0.010")
+HANDOFF_XY = None if _HXY == "goal" else np.array([float(x) for x in _HXY.split(",")])
 YAW_OFF = math.radians(float(os.environ.get("DEMO_YAW_OFF", "0")))   # turn the ring this far past the best yaw
 HANDOFF_RISE = float(os.environ.get("DEMO_HANDOFF_RISE", "0.045"))   # tool lift at pickup
 
@@ -575,7 +577,7 @@ def task2():
     print(f"        arm 1 is on the {'+x' if tool('robot')[0] > ring()[0] else '-x (arm 2 side!)'} wall")
     say("Arm 1: carry to the handover point")
     try:
-      carry("robot", HANDOFF_XY, "Arm 1")
+      carry("robot", pos("goal")[:2] if HANDOFF_XY is None else HANDOFF_XY, "Arm 1")
     except Dropped as e:
       print(f"        ! DROPPED: {e}")
     z_hand = ring()[2]

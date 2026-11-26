@@ -305,3 +305,19 @@ register_mjlab_task(
   rl_cfg=_dual_task2_rl,
   runner_cls=SurgicalLabOnPolicyRunner,
 )
+
+# Task 2, reward v1: the exchange at a fixed spot above the goal (v0 had no
+# fixed place and arm 1 carried the ring away upwards). Same file, spot=True.
+_dual_task2s_rl = psm_lift_peg_a3b_state_ppo_runner_cfg(low_entropy=True)
+_dual_task2s_rl.experiment_name = "dual_task2_spot"
+_dual_task2s_rl.max_iterations = 6000
+_dual_task2s_rl.wandb_project = "csc413-dual-psm"
+assert _dual_task2s_rl.algorithm.entropy_coef == 0.005
+_dual_task2s_rl.actor.class_name = "surgical_lab.rl.bounded_actor:BoundedActorMLPStdLowEnt"
+register_mjlab_task(
+  task_id="Surgicallab-Dual-Task2-Spot",
+  env_cfg=dual_task2_handover_env_cfg(spot=True),
+  play_env_cfg=dual_task2_handover_env_cfg(play=True, spot=True),
+  rl_cfg=_dual_task2s_rl,
+  runner_cls=SurgicalLabOnPolicyRunner,
+)
