@@ -119,6 +119,7 @@ class _State:
     self.z_hand = torch.zeros(n, device=dev)       # mm, ring height at the handover
     self.release_z = torch.zeros(n, device=dev)    # mm, last penalised release
     self.goal_min = torch.full((n,), 1.0, device=dev)
+    self.grip2_min = torch.full((n,), 1.0, device=dev)
 
 
 def _state(env) -> _State:
@@ -141,6 +142,7 @@ def reset_handover(env, env_ids: torch.Tensor | None = None) -> None:
   s.z_hand[ids] = 0.0
   s.release_z[ids] = 0.0
   s.goal_min[ids] = 1.0
+  s.grip2_min[ids] = 1.0
   env._t2_cache = None
 
 
@@ -223,6 +225,7 @@ def terms(env) -> dict[str, torch.Tensor]:
   s.lift1_max = torch.where((~p1) & settled,
                             torch.maximum(s.lift1_max, (z - LR.Z_REST) * 1000.0), s.lift1_max)
   s.goal_min = torch.where(p1, torch.minimum(s.goal_min, d_goal_xy), s.goal_min)
+  s.grip2_min = torch.minimum(s.grip2_min, d_grip[:, 1])
 
   # --- the potential ---
   reach0 = 1.0 - torch.tanh(REACH_K * d_grip[:, 0])
@@ -332,7 +335,9 @@ def m_goal_mm(env):
 
 
 def m_grip2_mm(env):
-  return terms(env)["d_grip"][:, 1] * 1000.0
+  # Closest so far, tracked here: mjlab's metric reductions are mean/last/max.
+  terms(env)
+  return _state(env).grip2_min * 1000.0
 
 
 _RING_GEOMS: dict = {}
@@ -399,7 +404,7 @@ def dual_task2_handover_env_cfg(play: bool = False):
     "hand_z_mm": M(func=m_state, params={"attr": "z_hand"}, reduce="last"),
     "release_mm": M(func=m_state, params={"attr": "release_z"}, reduce="last"),
     "ring_goal_mm": M(func=m_goal_mm, reduce="last"),       # phase 1 closest; 1000 = never
-    "grip_2_mm": M(func=m_grip2_mm, reduce="min"),
+    "grip_2_mm": M(func=m_grip2_mm, reduce="last"),
     "tilt_deg": M(func=m_key, params={"key": "tilt"}, reduce="last"),
     "ring_friction": M(func=m_ring_friction, reduce="last"),
   }

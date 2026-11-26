@@ -236,7 +236,7 @@ Logged under `Episode_Metrics/` in wandb.
 | `hand_z_mm` | Ring height at the handover |
 | `release_mm` | Ring height at the last penalised release (a drop) |
 | `ring_goal_mm` | Closest the ring got to the goal centre in phase 1 (1000 = never) |
-| `grip_2_mm` | Closest arm 2's tool got to its grip point |
+| `grip_2_mm` | Closest arm 2's tool got to its grip point (logged as the episode average in run `k36zdnep`, before this was fixed) |
 | `tilt_deg` | Ring tilt at episode end |
 | `ring_friction` | The ring's randomised friction that episode, to see whether failures are the slippery rings |
 
