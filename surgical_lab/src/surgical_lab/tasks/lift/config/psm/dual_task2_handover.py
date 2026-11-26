@@ -115,6 +115,18 @@ PEG_K = S.PEG_K
 ALIGN_STD = S.ALIGN_STD
 INSERT_XY = S.INSERT_XY
 
+# Exchange quality (reinsert only). Grip force is not measured, so "stress on
+# the ring while both arms grip it" is charged through two stand-ins:
+#  * time: every second both arms grip it beyond BOTH_GRACE_S, the exchange
+#    should be quick;
+#  * motion: tool speed while both grip it, any motion then pulls the ring
+#    between the jaws. Normalised to the action's top speed (0.5 mm/step =
+#    25 mm/s): both arms at full speed cost 2 * BOTH_MOVE_PEN per second.
+BOTH_GRACE_S = _f("T2R_BOTH_GRACE_S", "1.0")
+BOTH_TIME_PEN = _f("T2R_BOTH_TIME_PEN", "1.0")    # per second over the grace
+BOTH_MOVE_PEN = _f("T2R_BOTH_MOVE_PEN", "1.0")    # per second at full speed, per arm
+V_MAX = 0.0005 / 0.02                             # m/s: CartesianDelta pos_scale / dt
+
 R_P1_BASE = V1_P1_BASE                                       # 17
 R_LIFT = R_P1_BASE + 1.0                                     # 18
 R_CARRY = R_LIFT + 1.0                                       # 19
@@ -166,6 +178,10 @@ class _State:
     self.cleared2 = z()                                   # reinsert: arm 2 has it above the post
     self.peg_min = torch.full((n,), 1.0, device=dev)      # reinsert: phase-1 closest to the peg
     self.hand_spot = torch.zeros(n, device=dev)           # mm, ring-to-spot at the handover
+    self.both_steps = torch.zeros(n, dtype=torch.long, device=dev)  # consecutive steps both grip
+    self.both_max_s = torch.zeros(n, device=dev)          # longest both-grip stretch, s
+    self.prev_tools = torch.zeros(n, 2, 3, device=dev)
+    self.prev_valid = z()
 
 
 def _state(env) -> _State:
@@ -198,6 +214,9 @@ def reset_handover(env, env_ids: torch.Tensor | None = None, spot: bool = False,
   s.cleared2[ids] = False
   s.peg_min[ids] = 1.0
   s.hand_spot[ids] = 0.0
+  s.both_steps[ids] = 0
+  s.both_max_s[ids] = 0.0
+  s.prev_valid[ids] = False
   env._t2_cache = None
 
 
@@ -302,6 +321,24 @@ def terms(env) -> dict[str, torch.Tensor]:
   s.touch2_ever = s.touch2_ever | touch2
   s.peg_min = torch.where(p1, torch.minimum(s.peg_min, d_peg_xy), s.peg_min)
 
+  # Exchange quality (reinsert): both arms' pads on the ring, in the air.
+  dt = env.step_dt
+  grip_both = (~p1_prev) & contact[:, 0] & contact[:, 1] & in_air
+  s.both_steps = torch.where(grip_both, s.both_steps + 1, torch.zeros_like(s.both_steps))
+  s.both_max_s = torch.maximum(s.both_max_s, s.both_steps.float() * dt)
+  speed = torch.where(s.prev_valid[:, None],
+                      torch.linalg.norm(tools - s.prev_tools, dim=-1) / dt,
+                      torch.zeros_like(tools[..., 0]))                            # (n,2) m/s
+  s.prev_tools = tools.clone()
+  s.prev_valid = torch.ones_like(s.prev_valid)
+  late = grip_both & (s.both_steps.float() * dt > BOTH_GRACE_S)
+  both_time_cost = BOTH_TIME_PEN * dt * late.float()
+  both_move_cost = (BOTH_MOVE_PEN * dt * (speed / V_MAX).clamp(max=2.0).sum(-1)
+                    * grip_both.float())
+  if not reinsert:
+    both_time_cost = torch.zeros_like(both_time_cost)
+    both_move_cost = torch.zeros_like(both_move_cost)
+
   # --- the potential ---
   reach0 = 1.0 - torch.tanh(REACH_K * d_grip[:, 0])
   lift0 = P0_LIFT + LIFT_GAIN * lift_frac
@@ -369,6 +406,7 @@ def terms(env) -> dict[str, torch.Tensor]:
     "cleared": cleared_obs, "in_air": in_air, "d_goal_xy": d_goal_xy,
     "tilt": tilt, "released": released, "rel_cost": rel_cost,
     "d_spot": d_spot, "at_spot": at_spot, "touch2": touch2, "on_peg": on_peg,
+    "grip_both": grip_both, "both_time_cost": both_time_cost, "both_move_cost": both_move_cost,
   }
   env._t2_cache = (key, out)
   return out
@@ -415,6 +453,16 @@ def r_success(env):
 
 def r_release(env):
   return terms(env)["rel_cost"]
+
+
+def r_both_time(env):
+  """Per-step cost (return units) of both arms gripping past the grace period."""
+  return terms(env)["both_time_cost"]
+
+
+def r_both_move(env):
+  """Per-step cost (return units) of tool motion while both arms grip."""
+  return terms(env)["both_move_cost"]
 
 
 def r_lost(env):
@@ -541,6 +589,10 @@ def dual_task2_handover_env_cfg(play: bool = False, spot: bool = False, reinsert
     cfg.metrics["at_spot_rate"] = M(func=m_state, params={"attr": "at_spot_ever"}, reduce="last")
     cfg.metrics["touch_2_rate"] = M(func=m_state, params={"attr": "touch2_ever"}, reduce="last")
   if reinsert:
+    # Costs are computed in return units per step; -1/dt cancels the manager's dt.
+    cfg.rewards["both_time"] = RewardTermCfg(func=r_both_time, weight=-1.0 / dt)
+    cfg.rewards["both_move"] = RewardTermCfg(func=r_both_move, weight=-1.0 / dt)
+    cfg.metrics["both_max_s"] = M(func=m_state, params={"attr": "both_max_s"}, reduce="last")
     cfg.metrics["hand_spot_mm"] = M(func=m_state, params={"attr": "hand_spot"}, reduce="last")
     cfg.metrics["cleared_2_rate"] = M(func=m_state, params={"attr": "cleared2"}, reduce="last")
     cfg.metrics["ring_peg_2_mm"] = M(func=m_peg_mm, reduce="last")   # phase-1 closest; 1000 = never
