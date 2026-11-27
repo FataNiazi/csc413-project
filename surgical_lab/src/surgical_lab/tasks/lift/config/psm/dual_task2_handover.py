@@ -239,13 +239,23 @@ def terms(env) -> dict[str, torch.Tensor]:
                      for a in ARMS], dim=-1)                                       # (n,2)
   contact = T1._holding(env)                                                       # (n,2) pads on
 
+  # Reinsert, before the handover: arm 2's target is the wall on the far side
+  # of the ring from arm 1's tool (as in the scripted demo), not its nearest
+  # grip point. Both arms close along the same line, so arm 2's nearest point
+  # is often the wall arm 1 already holds, which it cannot close on.
+  far2 = bool(getattr(env, "_t2_reinsert", False)) & ~_state(env).phase1         # (n,)
+  away = ring[:, :2] - tools[:, 0, :2]
+  away = away / (torch.linalg.norm(away, dim=-1, keepdim=True) + 1e-9)
   d_grip, near, grip_vec = [], [], []
   for k, a in enumerate(ARMS):
     P = S._grip_points(env, ring, ring_q, a)                                       # (n,2,3)
     dv = P - tools[:, k:k + 1]
     dist = torch.linalg.norm(dv, dim=-1)
     best = dist.argmin(dim=1)
-    d_grip.append(dist.min(dim=1).values)
+    if k == 1:
+      side = ((P[..., :2] - ring[:, None, :2]) * away[:, None]).sum(-1)          # (n,2)
+      best = torch.where(far2, side.argmax(dim=1), best)
+    d_grip.append(dist.gather(1, best[:, None])[:, 0])
     near.append(((torch.linalg.norm(dv[..., :2], dim=-1) < GRIP_TOL_XY)
                  & (dv[..., 2].abs() < GRIP_TOL_Z)).any(dim=1))
     grip_vec.append(dv[torch.arange(dv.shape[0], device=env.device), best])
